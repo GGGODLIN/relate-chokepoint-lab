@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .tmp/
+data/graph.canonical.json
 *.log
 .DS_Store
 coverage/

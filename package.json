@@ -12,7 +12,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "probe": "node scripts/probe-toolchain.mjs"
+    "probe": "node scripts/probe-toolchain.mjs",
+    "build:graph": "node scripts/build-graph.mjs",
+    "verify:parity": "node scripts/verify-parity.mjs",
+    "verify:rollback": "node scripts/verify-cli-rollback.mjs"
   },
   "dependencies": {
     "@relate/relate-wasm": "1.1.0",

@@ -1,0 +1,406 @@
+{
+  "schemaVersion": 1,
+  "inputs": {
+    "linestrings": 4108,
+    "multilinestring_parts": 2,
+    "total_flattened_lines": 4110,
+    "self_loops_dropped": 3,
+    "degenerate_segments_dropped": 0,
+    "south_africa_bypass_features_patched": [
+      706,
+      4107
+    ],
+    "t_junction_vertices_preserved": 1085,
+    "t_junction_endpoint_incidences": 1697,
+    "raw_ports_total": 3962,
+    "raw_duplicate_locodes": 38,
+    "ports_t1_total": 803,
+    "ports_inland_or_far_dropped": 40,
+    "ports_duplicate_t1_resolved": 5
+  },
+  "graph": {
+    "waypoints": 10560,
+    "anchor_waypoints": 6551,
+    "synthetic_waypoints": 4009,
+    "maritime_edges": 16801,
+    "port_link_edges": 758,
+    "total_sea_and_passage_edges": 17559,
+    "ports": 758,
+    "countries": 175,
+    "trades_with_edges": 6427,
+    "static_rel_types_count": 14,
+    "edges_by_rel_type": {
+      "SEA_OPEN": 16717,
+      "PASSAGE_BABALMANDAB": 1,
+      "PASSAGE_BERING": 7,
+      "PASSAGE_BOSPORUS": 6,
+      "PASSAGE_CHILI": 6,
+      "PASSAGE_DARDANELLES": 5,
+      "PASSAGE_GIBRALTAR": 3,
+      "PASSAGE_MALACCA": 1,
+      "PASSAGE_NORTHWEST": 12,
+      "PASSAGE_ORMUZ": 4,
+      "PASSAGE_PANAMA": 10,
+      "PASSAGE_SOUTH_AFRICA": 23,
+      "PASSAGE_SUEZ": 5,
+      "PASSAGE_SUNDA": 1
+    },
+    "resample_step_km": 250,
+    "max_snap_dist_km": 100
+  },
+  "invariants": {
+    "connected_components": 1,
+    "ports_on_non_main": 0,
+    "duplicate_port_ids": 0,
+    "max_port_snap_dist_km": 98.542,
+    "uncleaned_country_names": 0,
+    "northwest_default_blocked": true,
+    "cut_audit_clean": true,
+    "unintended_local_bypasses": 0
+  },
+  "cut_audit": [
+    {
+      "passage": "babalmandab",
+      "featureCount": 1,
+      "edgeCount": 1,
+      "minDetourKm": 23098.6,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "bering",
+      "featureCount": 3,
+      "edgeCount": 7,
+      "minDetourKm": 23403.4,
+      "disconnectsBasin": true,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "bosporus",
+      "featureCount": 1,
+      "edgeCount": 6,
+      "minDetourKm": null,
+      "disconnectsBasin": true,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "chili",
+      "featureCount": 3,
+      "edgeCount": 6,
+      "minDetourKm": 19281.8,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "dardanelles",
+      "featureCount": 1,
+      "edgeCount": 5,
+      "minDetourKm": null,
+      "disconnectsBasin": true,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "gibraltar",
+      "featureCount": 1,
+      "edgeCount": 3,
+      "minDetourKm": 23062.5,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "malacca",
+      "featureCount": 1,
+      "edgeCount": 1,
+      "minDetourKm": 4082,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "northwest",
+      "featureCount": 4,
+      "edgeCount": 12,
+      "minDetourKm": 26857.8,
+      "disconnectsBasin": true,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "ormuz",
+      "featureCount": 1,
+      "edgeCount": 4,
+      "minDetourKm": null,
+      "disconnectsBasin": true,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "panama",
+      "featureCount": 1,
+      "edgeCount": 10,
+      "minDetourKm": 19175.6,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "south_africa",
+      "featureCount": 7,
+      "edgeCount": 23,
+      "minDetourKm": 1750,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "suez",
+      "featureCount": 1,
+      "edgeCount": 5,
+      "minDetourKm": 22635.9,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    },
+    {
+      "passage": "sunda",
+      "featureCount": 1,
+      "edgeCount": 1,
+      "minDetourKm": 2673.1,
+      "disconnectsBasin": false,
+      "bypassLeaks": 0
+    }
+  ],
+  "isolation_baselines": {
+    "suez-babalmandab": {
+      "presetId": "suez-babalmandab",
+      "blockedPassages": [
+        "babalmandab",
+        "northwest",
+        "suez"
+      ],
+      "referenceHubCode": "NLRTM",
+      "reachablePorts": 749,
+      "isolatedPorts": 9,
+      "sampleIsolatedCodes": [
+        "SAJED",
+        "SAKAC",
+        "JOAQB",
+        "EGAIS",
+        "ERMSW",
+        "SDPZU",
+        "EGSCN",
+        "YEHOD",
+        "EGSOK"
+      ]
+    },
+    "hormuz": {
+      "presetId": "hormuz",
+      "blockedPassages": [
+        "northwest",
+        "ormuz"
+      ],
+      "referenceHubCode": "NLRTM",
+      "reachablePorts": 738,
+      "isolatedPorts": 20,
+      "sampleIsolatedCodes": [
+        "AEJEA",
+        "AEAUH",
+        "QAHMD",
+        "SAJUB",
+        "IQUQR",
+        "KWSAA",
+        "AEDXB",
+        "QADOH",
+        "KWSWK",
+        "AESHJ"
+      ]
+    },
+    "gibraltar-suez": {
+      "presetId": "gibraltar-suez",
+      "blockedPassages": [
+        "gibraltar",
+        "northwest",
+        "suez"
+      ],
+      "referenceHubCode": "NLRTM",
+      "reachablePorts": 655,
+      "isolatedPorts": 103,
+      "sampleIsolatedCodes": [
+        "ESVLC",
+        "ESALG",
+        "ITGOA",
+        "EGPSD",
+        "ITGIT",
+        "ESBCN",
+        "GRPIR",
+        "TRIST",
+        "FRFOS",
+        "TRMER"
+      ]
+    }
+  },
+  "golden_route_baselines": {
+    "open": [
+      {
+        "routeId": "twkhh-nlrtm",
+        "from": "TWKHH",
+        "to": "NLRTM",
+        "hops": 126,
+        "totalKm": 19340.5,
+        "isolated": false
+      },
+      {
+        "routeId": "sgsin-nlrtm",
+        "from": "SGSIN",
+        "to": "NLRTM",
+        "hops": 111,
+        "totalKm": 15958.6,
+        "isolated": false
+      },
+      {
+        "routeId": "aejea-itgoa",
+        "from": "AEJEA",
+        "to": "ITGOA",
+        "hops": 63,
+        "totalKm": 8234.5,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-uslax",
+        "from": "CNSHA",
+        "to": "USLAX",
+        "hops": 51,
+        "totalKm": 11720.9,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-usnyc",
+        "from": "CNSHA",
+        "to": "USNYC",
+        "hops": 120,
+        "totalKm": 21856.4,
+        "isolated": false
+      }
+    ],
+    "suez-babalmandab": [
+      {
+        "routeId": "twkhh-nlrtm",
+        "from": "TWKHH",
+        "to": "NLRTM",
+        "hops": 133,
+        "totalKm": 26433.7,
+        "isolated": false
+      },
+      {
+        "routeId": "sgsin-nlrtm",
+        "from": "SGSIN",
+        "to": "NLRTM",
+        "hops": 119,
+        "totalKm": 23606.6,
+        "isolated": false
+      },
+      {
+        "routeId": "aejea-itgoa",
+        "from": "AEJEA",
+        "to": "ITGOA",
+        "hops": 104,
+        "totalKm": 21072.7,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-uslax",
+        "from": "CNSHA",
+        "to": "USLAX",
+        "hops": 51,
+        "totalKm": 11720.9,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-usnyc",
+        "from": "CNSHA",
+        "to": "USNYC",
+        "hops": 120,
+        "totalKm": 21856.4,
+        "isolated": false
+      }
+    ],
+    "hormuz": [
+      {
+        "routeId": "twkhh-nlrtm",
+        "from": "TWKHH",
+        "to": "NLRTM",
+        "hops": 126,
+        "totalKm": 19340.5,
+        "isolated": false
+      },
+      {
+        "routeId": "sgsin-nlrtm",
+        "from": "SGSIN",
+        "to": "NLRTM",
+        "hops": 111,
+        "totalKm": 15958.6,
+        "isolated": false
+      },
+      {
+        "routeId": "aejea-itgoa",
+        "from": "AEJEA",
+        "to": "ITGOA",
+        "hops": null,
+        "totalKm": null,
+        "isolated": true
+      },
+      {
+        "routeId": "cnsha-uslax",
+        "from": "CNSHA",
+        "to": "USLAX",
+        "hops": 51,
+        "totalKm": 11720.9,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-usnyc",
+        "from": "CNSHA",
+        "to": "USNYC",
+        "hops": 120,
+        "totalKm": 21856.4,
+        "isolated": false
+      }
+    ],
+    "gibraltar-suez": [
+      {
+        "routeId": "twkhh-nlrtm",
+        "from": "TWKHH",
+        "to": "NLRTM",
+        "hops": 133,
+        "totalKm": 26433.7,
+        "isolated": false
+      },
+      {
+        "routeId": "sgsin-nlrtm",
+        "from": "SGSIN",
+        "to": "NLRTM",
+        "hops": 119,
+        "totalKm": 23606.6,
+        "isolated": false
+      },
+      {
+        "routeId": "aejea-itgoa",
+        "from": "AEJEA",
+        "to": "ITGOA",
+        "hops": null,
+        "totalKm": null,
+        "isolated": true
+      },
+      {
+        "routeId": "cnsha-uslax",
+        "from": "CNSHA",
+        "to": "USLAX",
+        "hops": 51,
+        "totalKm": 11720.9,
+        "isolated": false
+      },
+      {
+        "routeId": "cnsha-usnyc",
+        "from": "CNSHA",
+        "to": "USNYC",
+        "hops": 120,
+        "totalKm": 21856.4,
+        "isolated": false
+      }
+    ]
+  }
+}
