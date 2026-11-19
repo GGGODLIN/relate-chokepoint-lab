@@ -2,26 +2,19 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { initSync, RelateDb } from '@relate/relate-wasm';
+import {
+  parseRelateEnvelope,
+  RelateEnvelopeError,
+  type ParsedRelateEnvelope,
+  type RelateEnvelopeStats,
+} from './envelope.ts';
 
-export interface RelateEnvelopeStats {
-  readonly nodes_created?: number;
-  readonly relationships_created?: number;
-  readonly indexes_added?: number;
-  readonly [key: string]: number | undefined;
-}
-
-export interface ParsedRelateEnvelope {
-  readonly columns: readonly string[];
-  readonly columnTypes: readonly string[];
-  readonly rows: readonly Record<string, unknown>[];
-  readonly error: string | null;
-  readonly elapsedMs: number | null;
-  readonly executeMs: number | null;
-  readonly planCache: string | null;
-  readonly plan: unknown;
-  readonly notifications: readonly unknown[];
-  readonly stats: RelateEnvelopeStats;
-}
+export {
+  parseRelateEnvelope,
+  RelateEnvelopeError,
+  type ParsedRelateEnvelope,
+  type RelateEnvelopeStats,
+};
 
 export interface RelateWasmProbeResult {
   readonly wasmPackageVersion: string;
@@ -30,112 +23,7 @@ export interface RelateWasmProbeResult {
   readonly blockedRouteEnvelope: ParsedRelateEnvelope;
 }
 
-export class RelateEnvelopeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RelateEnvelopeError';
-  }
-}
-
 let wasmInitialized = false;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readOptionalNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function extractErrorMessage(rawError: unknown): string | null {
-  if (rawError === null || rawError === undefined) {
-    return null;
-  }
-  if (typeof rawError === 'string') {
-    return rawError;
-  }
-  if (isRecord(rawError) && typeof rawError.message === 'string') {
-    return rawError.message;
-  }
-  return JSON.stringify(rawError);
-}
-
-export function parseRelateEnvelope(rawJson: string): ParsedRelateEnvelope {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawJson);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new RelateEnvelopeError(`Failed to parse Relate wire envelope JSON: ${detail}`);
-  }
-
-  if (!isRecord(parsed)) {
-    throw new RelateEnvelopeError('Relate wire envelope must be a JSON object');
-  }
-
-  const error = extractErrorMessage(parsed.error);
-
-  // Native CLI error envelopes omit columns/rows; success envelopes always include both arrays.
-  const columns = Array.isArray(parsed.columns)
-    ? parsed.columns.map((col) => String(col))
-    : error !== null
-      ? []
-      : null;
-  if (columns === null) {
-    throw new RelateEnvelopeError('Relate wire envelope is missing columns array');
-  }
-
-  const rows = Array.isArray(parsed.rows)
-    ? parsed.rows
-    : error !== null
-      ? []
-      : null;
-  if (rows === null) {
-    throw new RelateEnvelopeError('Relate wire envelope is missing rows array');
-  }
-
-  const typedRows: Record<string, unknown>[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!isRecord(row)) {
-      throw new RelateEnvelopeError(`Relate wire envelope rows[${i}] must be an object`);
-    }
-    typedRows.push(row);
-  }
-
-  const columnTypes = Array.isArray(parsed.columnTypes)
-    ? parsed.columnTypes.map((t) => String(t))
-    : [];
-
-  const timings = isRecord(parsed.timings) ? parsed.timings : null;
-  const elapsedMs = readOptionalNumber(parsed.elapsed_ms) ?? readOptionalNumber(timings?.elapsed_ms);
-  const executeMs = readOptionalNumber(parsed.execute_ms) ?? readOptionalNumber(timings?.execute_ms);
-
-  const planCache =
-    typeof parsed.plan_cache === 'string'
-      ? parsed.plan_cache
-      : typeof parsed.planCache === 'string'
-        ? parsed.planCache
-        : null;
-
-  const notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
-  const stats: RelateEnvelopeStats = isRecord(parsed.stats)
-    ? (parsed.stats as RelateEnvelopeStats)
-    : {};
-
-  return {
-    columns,
-    columnTypes,
-    rows: typedRows,
-    error,
-    elapsedMs,
-    executeMs,
-    planCache,
-    plan: parsed.plan ?? null,
-    notifications,
-    stats,
-  };
-}
 
 export function initRelateWasmNode(): void {
   if (wasmInitialized) {
