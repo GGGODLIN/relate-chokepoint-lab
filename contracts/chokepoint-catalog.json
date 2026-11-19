@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "openSeaRelType": "SEA_OPEN",
+  "referenceHubCode": "NLRTM",
+  "fallbackReferenceHubCode": "SGSIN",
+  "passages": [
+    {
+      "id": "babalmandab",
+      "name": "Bab el-Mandeb",
+      "relType": "PASSAGE_BABALMANDAB",
+      "region": "Red Sea / Gulf of Aden",
+      "defaultBlocked": false,
+      "focusLon": 43.5233,
+      "focusLat": 12.5522
+    },
+    {
+      "id": "bering",
+      "name": "Bering Strait",
+      "relType": "PASSAGE_BERING",
+      "region": "North Pacific / Arctic",
+      "defaultBlocked": false,
+      "focusLon": -169.1502,
+      "focusLat": 65.9622
+    },
+    {
+      "id": "bosporus",
+      "name": "Bosphorus Strait",
+      "relType": "PASSAGE_BOSPORUS",
+      "region": "Black Sea / Sea of Marmara",
+      "defaultBlocked": false,
+      "focusLon": 29.0551,
+      "focusLat": 41.107
+    },
+    {
+      "id": "chili",
+      "name": "Strait of Magellan & Cape Horn",
+      "relType": "PASSAGE_CHILI",
+      "region": "Southern Cone",
+      "defaultBlocked": false,
+      "focusLon": -70.5,
+      "focusLat": -55.5
+    },
+    {
+      "id": "dardanelles",
+      "name": "Dardanelles Strait",
+      "relType": "PASSAGE_DARDANELLES",
+      "region": "Aegean / Sea of Marmara",
+      "defaultBlocked": false,
+      "focusLon": 27.5889,
+      "focusLat": 40.5358
+    },
+    {
+      "id": "gibraltar",
+      "name": "Strait of Gibraltar",
+      "relType": "PASSAGE_GIBRALTAR",
+      "region": "Mediterranean / Atlantic",
+      "defaultBlocked": false,
+      "focusLon": -5.225,
+      "focusLat": 35.975
+    },
+    {
+      "id": "malacca",
+      "name": "Strait of Malacca",
+      "relType": "PASSAGE_MALACCA",
+      "region": "Southeast Asia",
+      "defaultBlocked": false,
+      "focusLon": 100.1819,
+      "focusLat": 3.6423
+    },
+    {
+      "id": "northwest",
+      "name": "Northwest Passage",
+      "relType": "PASSAGE_NORTHWEST",
+      "region": "Canadian Arctic",
+      "defaultBlocked": true,
+      "focusLon": -95.0,
+      "focusLat": 74.0
+    },
+    {
+      "id": "ormuz",
+      "name": "Strait of Hormuz",
+      "relType": "PASSAGE_ORMUZ",
+      "region": "Persian Gulf / Gulf of Oman",
+      "defaultBlocked": false,
+      "focusLon": 56.7217,
+      "focusLat": 25.9705
+    },
+    {
+      "id": "panama",
+      "name": "Panama Canal",
+      "relType": "PASSAGE_PANAMA",
+      "region": "Central America",
+      "defaultBlocked": false,
+      "focusLon": -79.8364,
+      "focusLat": 8.5862
+    },
+    {
+      "id": "south_africa",
+      "name": "Cape of Good Hope",
+      "relType": "PASSAGE_SOUTH_AFRICA",
+      "region": "Southern Africa",
+      "defaultBlocked": false,
+      "focusLon": 20.0,
+      "focusLat": -35.0
+    },
+    {
+      "id": "suez",
+      "name": "Suez Canal",
+      "relType": "PASSAGE_SUEZ",
+      "region": "Egypt / Red Sea-Mediterranean",
+      "defaultBlocked": false,
+      "focusLon": 33.4051,
+      "focusLat": 29.0515
+    },
+    {
+      "id": "sunda",
+      "name": "Sunda Strait",
+      "relType": "PASSAGE_SUNDA",
+      "region": "Java Sea / Indian Ocean",
+      "defaultBlocked": false,
+      "focusLon": 105.8094,
+      "focusLat": -5.9364
+    }
+  ],
+  "presets": [
+    {
+      "id": "suez-babalmandab",
+      "name": "Suez + Bab el-Mandeb",
+      "blockedPassages": ["suez", "babalmandab"],
+      "heroRouteId": "twkhh-nlrtm",
+      "description": "Red Sea corridor closure forcing Asia-Europe container lanes around the Cape of Good Hope."
+    },
+    {
+      "id": "hormuz",
+      "name": "Strait of Hormuz",
+      "blockedPassages": ["ormuz"],
+      "heroRouteId": "aejea-itgoa",
+      "description": "Persian Gulf blockade isolating Jebel Ali and neighboring Gulf maritime terminals."
+    },
+    {
+      "id": "gibraltar-suez",
+      "name": "Gibraltar + Suez",
+      "blockedPassages": ["gibraltar", "suez"],
+      "heroRouteId": "sgsin-nlrtm",
+      "description": "Dual Mediterranean gateway closure isolating the Mediterranean and Black Sea basins."
+    }
+  ],
+  "curatedHubPorts": [
+    { "code": "NLRTM", "name": "Rotterdam", "region": "Northern Europe" },
+    { "code": "BEANR", "name": "Antwerp", "region": "Northern Europe" },
+    { "code": "DEHAM", "name": "Hamburg", "region": "Northern Europe" },
+    { "code": "ESVLC", "name": "Valencia", "region": "Mediterranean" },
+    { "code": "ESALG", "name": "Algeciras", "region": "Mediterranean" },
+    { "code": "ITGOA", "name": "Genova", "region": "Mediterranean" },
+    { "code": "EGPSD", "name": "Port Said", "region": "Red Sea / Suez" },
+    { "code": "AEJEA", "name": "Jebel Ali", "region": "Persian Gulf" },
+    { "code": "LKCMB", "name": "Colombo", "region": "Indian Ocean" },
+    { "code": "SGSIN", "name": "Singapore", "region": "Southeast Asia" },
+    { "code": "TWKHH", "name": "Kaohsiung", "region": "East Asia" },
+    { "code": "CNSHA", "name": "Shanghai", "region": "East Asia" },
+    { "code": "KRPUS", "name": "Busan", "region": "East Asia" },
+    { "code": "JPTYO", "name": "Tokyo", "region": "East Asia" },
+    { "code": "AUSYD", "name": "Sydney", "region": "Oceania" },
+    { "code": "USLAX", "name": "Los Angeles", "region": "North America West" },
+    { "code": "USNYC", "name": "New York", "region": "North America East" },
+    { "code": "PAMIT", "name": "Manzanillo", "region": "Central America" },
+    { "code": "BRSSZ", "name": "Santos", "region": "South America" },
+    { "code": "ZADUR", "name": "Durban", "region": "Southern Africa" }
+  ],
+  "goldenRoutes": [
+    {
+      "id": "twkhh-nlrtm",
+      "from": "TWKHH",
+      "to": "NLRTM",
+      "label": "Kaohsiung -> Rotterdam"
+    },
+    {
+      "id": "sgsin-nlrtm",
+      "from": "SGSIN",
+      "to": "NLRTM",
+      "label": "Singapore -> Rotterdam"
+    },
+    {
+      "id": "aejea-itgoa",
+      "from": "AEJEA",
+      "to": "ITGOA",
+      "label": "Jebel Ali -> Genova"
+    },
+    {
+      "id": "cnsha-uslax",
+      "from": "CNSHA",
+      "to": "USLAX",
+      "label": "Shanghai -> Los Angeles"
+    },
+    {
+      "id": "cnsha-usnyc",
+      "from": "CNSHA",
+      "to": "USNYC",
+      "label": "Shanghai -> New York"
+    }
+  ]
+}
