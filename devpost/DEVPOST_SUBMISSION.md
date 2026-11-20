@@ -5,7 +5,7 @@
 **Live Workbench (zero install, zero server):** https://relate-chokepoint-lab.vercel.app  
 **Public Repository (topic: `relate`, `relate-neo4j-hackathon`):** https://github.com/GGGODLIN/relate-chokepoint-lab  
 **Persistent Relate Store (non-LFS single file):** https://github.com/GGGODLIN/relate-chokepoint-lab/blob/main/data/chokepoint.rl  
-**Demo Video (1–2 min):** _Pending YouTube upload from Stage 4 render (`chokepoint-lab-demo.mp4`)_
+**Demo Video (59.5 s):** https://youtu.be/2VzyKLDZK9A
 
 ---
 

@@ -3,6 +3,7 @@
 Global maritime chokepoint blockade simulator powered 100% by **Relate `v1.1.0`** (Cypher 25) across two synchronized surfaces: a zero-install browser WASM workbench (`:memory:` Dedicated Worker) and a single-file native `.rl` store with built-in MCP server.
 
 - **Live Workbench:** [Chokepoint Lab on Vercel](https://relate-chokepoint-lab.vercel.app)
+- **Demo Video (59.5 s):** [Watch on YouTube](https://youtu.be/2VzyKLDZK9A)
 - **Repository:** [GGGODLIN/relate-chokepoint-lab](https://github.com/GGGODLIN/relate-chokepoint-lab)
 - **Engine:** Relate `v1.1.0` (`@relate/relate-wasm@1.1.0` + native `relate` CLI/MCP) · Cypher 25
 
