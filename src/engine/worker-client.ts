@@ -168,6 +168,7 @@ export class ChokepointWorkerClient {
   private nextDispatchToken = 1;
 
   private lastBootSource: BootSource | null = null;
+  private lastBootTimeoutMs: number;
   private respawnPromise: Promise<void> | null = null;
   private disposed = false;
 
@@ -180,6 +181,7 @@ export class ChokepointWorkerClient {
   constructor(options: ChokepointWorkerClientOptions = {}) {
     this.workerFactory = options.workerFactory ?? createDefaultBrowserWorker;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.lastBootTimeoutMs = this.timeoutMs;
     this.autoRespawn = options.autoRespawn ?? true;
 
     this.boundOnMessage = (event) => {
@@ -231,6 +233,14 @@ export class ChokepointWorkerClient {
     current.terminate();
   }
 
+  private terminateWorkerForRecovery(): void {
+    if (this.worker === null) {
+      return;
+    }
+    this.terminateCurrentWorker();
+    this.respawnCount++;
+  }
+
   private clearPendingEntry(entry: PendingRequest): void {
     clearTimeout(entry.timer);
     if (entry.abortCleanup !== null) {
@@ -259,26 +269,34 @@ export class ChokepointWorkerClient {
     }
 
     const source = this.lastBootSource;
+    const bootTimeoutMs = this.lastBootTimeoutMs;
     const promise = (async () => {
       if (this.disposed) {
         throw new WorkerDisposedError();
       }
-      this.spawnWorker();
+      const spawned = this.spawnWorker();
       if (source !== null) {
-        await this.sendRawRequest<BootTelemetry>(
-          (id) => ({
-            type: 'boot',
-            id,
-            payload: source.payload,
-            payloadUrl: source.payloadUrl,
-            chunkSize: source.chunkSize,
-          }),
-          {
-            channel: null,
-            cypher: null,
-            timeoutMs: this.timeoutMs,
-          },
-        );
+        try {
+          await this.sendRawRequest<BootTelemetry>(
+            (id) => ({
+              type: 'boot',
+              id,
+              payload: source.payload,
+              payloadUrl: source.payloadUrl,
+              chunkSize: source.chunkSize,
+            }),
+            {
+              channel: null,
+              cypher: null,
+              timeoutMs: bootTimeoutMs,
+            },
+          );
+        } catch (err) {
+          if (this.worker === spawned) {
+            this.terminateCurrentWorker();
+          }
+          throw err;
+        }
       }
       if (this.disposed) {
         this.terminateCurrentWorker();
@@ -309,8 +327,7 @@ export class ChokepointWorkerClient {
     cypher: string | null,
     telemetry: QueryTelemetry | null,
   ): void {
-    this.terminateCurrentWorker();
-    this.respawnCount++;
+    this.terminateWorkerForRecovery();
 
     const trapError = new WasmTrapError(message, cypher, telemetry);
 
@@ -345,6 +362,9 @@ export class ChokepointWorkerClient {
     if (entry === undefined) {
       // Response belongs to a superseded, cancelled, or timed-out request.
       this.discardedStaleCount++;
+      if (msg.type === 'error' && (msg.wasmTrap || isWasmTrap(new Error(msg.message)))) {
+        this.handleWasmTrapFailure(null, msg.message, msg.cypher ?? null, msg.telemetry);
+      }
       return;
     }
 
@@ -382,7 +402,7 @@ export class ChokepointWorkerClient {
       this.handleWasmTrapFailure(null, message, null, null);
       return;
     }
-    this.terminateCurrentWorker();
+    this.terminateWorkerForRecovery();
     this.rejectAllPending(
       (entry) => new WorkerRemoteError(`Worker crashed: ${message}`, entry.cypher, null),
     );
@@ -427,7 +447,7 @@ export class ChokepointWorkerClient {
         if (timedOutEntry === undefined) {
           return;
         }
-        this.terminateCurrentWorker();
+        this.terminateWorkerForRecovery();
         this.clearPendingEntry(timedOutEntry);
         timedOutEntry.reject(
           new WorkerTimeoutError(
@@ -548,7 +568,9 @@ export class ChokepointWorkerClient {
     if (this.disposed) {
       return Promise.reject(new WorkerDisposedError());
     }
+    const bootTimeoutMs = options.timeoutMs ?? this.timeoutMs;
     this.lastBootSource = source;
+    this.lastBootTimeoutMs = bootTimeoutMs;
     return this.sendRawRequest<BootTelemetry>(
       (id) => ({
         type: 'boot',
@@ -560,7 +582,7 @@ export class ChokepointWorkerClient {
       {
         channel: null,
         cypher: null,
-        timeoutMs: options.timeoutMs ?? this.timeoutMs,
+        timeoutMs: bootTimeoutMs,
         signal: options.signal,
       },
     );

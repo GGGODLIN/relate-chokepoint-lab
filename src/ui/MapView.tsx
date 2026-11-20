@@ -199,6 +199,7 @@ export function MapView({ catalog, state, controller, drawMode, onDrawModeChange
   const endpointMarkersRef = useRef<maplibregl.Marker[]>([]);
   const fittedHeroRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [dragRect, setDragRect] = useState<DragRect | null>(null);
 
   const portsByCode = useMemo(
@@ -213,19 +214,27 @@ export function MapView({ catalog, state, controller, drawMode, onDrawModeChange
     if (container === null) {
       return;
     }
-    const map = new maplibregl.Map({
-      container,
-      style: buildStyle(),
-      center: [42, 24],
-      zoom: 1.3,
-      minZoom: 0.5,
-      maxZoom: 9,
-      attributionControl: false,
-      dragRotate: false,
-      pitchWithRotate: false,
-      renderWorldCopies: true,
-    });
+    let map: MapLibreMap;
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: buildStyle(),
+        center: [42, 24],
+        zoom: 1.3,
+        minZoom: 0.5,
+        maxZoom: 9,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+        renderWorldCopies: true,
+      });
+    } catch (err: unknown) {
+      setMapError(err instanceof Error ? err.message : String(err));
+      return;
+    }
     map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     const chokeMarkers = chokeMarkersRef.current;
     const markers: maplibregl.Marker[] = [];
@@ -264,7 +273,10 @@ export function MapView({ catalog, state, controller, drawMode, onDrawModeChange
     const onIsolatedLeave = () => {
       map.getCanvas().style.cursor = '';
     };
-    const onLoad = () => setMapReady(true);
+    const onLoad = () => {
+      setMapError(null);
+      setMapReady(true);
+    };
     map.on('click', 'isolated', onIsolatedClick);
     map.on('mouseenter', 'isolated', onIsolatedEnter);
     map.on('mouseleave', 'isolated', onIsolatedLeave);
@@ -395,6 +407,9 @@ export function MapView({ catalog, state, controller, drawMode, onDrawModeChange
     canvasContainer.style.cursor = 'crosshair';
     let start: { readonly x: number; readonly y: number } | null = null;
     const onDown = (event: MapMouseEvent) => {
+      if (map.getBearing() !== 0 || map.getPitch() !== 0) {
+        map.jumpTo({ bearing: 0, pitch: 0 });
+      }
       start = { x: event.point.x, y: event.point.y };
       setDragRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
     };
@@ -441,6 +456,24 @@ export function MapView({ catalog, state, controller, drawMode, onDrawModeChange
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" data-testid="map" />
+      {mapError !== null ? (
+        <div
+          role="alert"
+          data-testid="map-error"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-deck/95 p-6"
+        >
+          <div className="max-w-md border border-alert/60 bg-deck p-4">
+            <p className="chart-label text-alert">Map unavailable</p>
+            <p className="mt-1.5 text-[13px] font-medium text-ink">
+              WebGL map initialization failed in this browser context.
+            </p>
+            <p className="mt-1 font-mono text-[11px] text-ink-faint">{mapError}</p>
+            <p className="mt-2 text-[11.5px] text-ink-dim">
+              Scenario presets, route metrics, isolation tables, and Live Cypher remain available in the side panels.
+            </p>
+          </div>
+        </div>
+      ) : null}
       {dragRect !== null ? (
         <div
           className="pointer-events-none absolute border border-dashed border-detour bg-detour/10"

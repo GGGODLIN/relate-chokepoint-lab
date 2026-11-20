@@ -75,6 +75,10 @@ export function buildHormuzTradeExposureCypher(openRelTypes: readonly string[]):
   ].join('\n');
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function readRequiredNumber(row: Record<string, unknown> | undefined, field: string, label: string): number {
   const value = row?.[field];
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -269,8 +273,17 @@ export function compareParitySnapshots(
         `route ${key} isolation mismatch: receipt=${receiptRoute.isolated}, native=${nRoute.isolated}, wasm=${wRoute.isolated}`,
       );
     }
-    if (!receiptRoute.isolated && (nRoute.hops === null || wRoute.hops === null)) {
-      diffs.push(`route ${key} unexpectedly returned 0/null path`);
+    if (!receiptRoute.isolated || !nRoute.isolated || !wRoute.isolated) {
+      if (!isFiniteNumber(nRoute.hops) || !isFiniteNumber(wRoute.hops)) {
+        diffs.push(
+          `route ${key} reachable route missing finite hops: native=${String(nRoute.hops)}, wasm=${String(wRoute.hops)}`,
+        );
+      }
+      if (!isFiniteNumber(nRoute.totalKm) || !isFiniteNumber(wRoute.totalKm)) {
+        diffs.push(
+          `route ${key} reachable route missing finite totalKm: native=${String(nRoute.totalKm)}, wasm=${String(wRoute.totalKm)}`,
+        );
+      }
     }
     if (nRoute.hops !== wRoute.hops || nRoute.hops !== receiptRoute.hops) {
       diffs.push(

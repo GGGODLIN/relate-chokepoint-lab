@@ -21,6 +21,7 @@ import {
   compareParitySnapshots,
   type ParitySnapshot,
 } from '../src/etl/parity.ts';
+import { loadWasmGraphPayloadIntoRelateDb } from '../src/etl/relate-loader.ts';
 
 const ROOT_DIR = resolve(import.meta.dirname, '..');
 const rawCatalog = JSON.parse(
@@ -455,5 +456,74 @@ describe('Seam 1 — verifyParity comparator fail-closed behavior', () => {
     };
     const countDiffs = compareParitySnapshots(countDriftNative, wasmSnap, receipt);
     expect(countDiffs.some((d) => d.includes('native count "ports" mismatch'))).toBe(true);
+
+    // Simultaneous null or NaN totalKm on a reachable route must fail closed.
+    const reachableIdx = nativeSnap.routes.findIndex((r) => !r.isolated);
+    expect(reachableIdx).toBeGreaterThanOrEqual(0);
+    const nullKmNative: ParitySnapshot = {
+      ...nativeSnap,
+      routes: nativeSnap.routes.map((r, idx) => (idx === reachableIdx ? { ...r, totalKm: null } : r)),
+    };
+    const nullKmWasm: ParitySnapshot = {
+      ...wasmSnap,
+      routes: wasmSnap.routes.map((r, idx) => (idx === reachableIdx ? { ...r, totalKm: null } : r)),
+    };
+    const nullKmDiffs = compareParitySnapshots(nullKmNative, nullKmWasm, receipt);
+    expect(nullKmDiffs.length).toBeGreaterThan(0);
+    expect(nullKmDiffs.some((d) => d.includes('totalKm'))).toBe(true);
+
+    const nanKmNative: ParitySnapshot = {
+      ...nativeSnap,
+      routes: nativeSnap.routes.map((r, idx) => (idx === reachableIdx ? { ...r, totalKm: Number.NaN } : r)),
+    };
+    const nanKmWasm: ParitySnapshot = {
+      ...wasmSnap,
+      routes: wasmSnap.routes.map((r, idx) => (idx === reachableIdx ? { ...r, totalKm: Number.NaN } : r)),
+    };
+    const nanKmDiffs = compareParitySnapshots(nanKmNative, nanKmWasm, receipt);
+    expect(nanKmDiffs.length).toBeGreaterThan(0);
+    expect(nanKmDiffs.some((d) => d.includes('totalKm'))).toBe(true);
+  });
+});
+
+describe('Seam 1 — loadWasmGraphPayloadIntoRelateDb envelope validation', () => {
+  const minimalPayload = {
+    schemaVersion: 1 as const,
+    generatedFrom: 'test',
+    catalogMeta: {
+      openSeaRelType: 'SEA_OPEN',
+      referenceHubCode: 'NLRTM',
+      fallbackReferenceHubCode: 'SGSIN',
+      staticRelTypes: ['SEA_OPEN'],
+      defaultBlockedPassages: ['northwest'],
+    },
+    waypoints: [],
+    countries: [],
+    ports: [],
+    edgesByRelType: { SEA_OPEN: [] },
+    tradesWith: [],
+  };
+
+  it('rejects malformed non-envelope JSON and error envelopes while preserving batch label', () => {
+    expect(() =>
+      loadWasmGraphPayloadIntoRelateDb({ execute: () => '{}' }, minimalPayload),
+    ).toThrow(/index_0/);
+
+    expect(() =>
+      loadWasmGraphPayloadIntoRelateDb({ execute: () => '[]' }, minimalPayload),
+    ).toThrow(/index_0/);
+
+    expect(() =>
+      loadWasmGraphPayloadIntoRelateDb(
+        { execute: () => JSON.stringify({ error: { message: 'syntax failed' } }) },
+        minimalPayload,
+      ),
+    ).toThrow(/index_0.*syntax failed/);
+
+    const ok = loadWasmGraphPayloadIntoRelateDb(
+      { execute: () => JSON.stringify({ columns: [], rows: [] }) },
+      minimalPayload,
+    );
+    expect(ok.batchesExecuted).toBeGreaterThan(0);
   });
 });

@@ -959,6 +959,7 @@ describe('Seam 2 — ChokepointWorkerClient transport & recovery resilience', ()
       const hungCypher = 'MATCH (a)-[*]-(b) RETURN count(*)';
       await expect(client.runCustomCypher(hungCypher)).rejects.toThrow(WorkerTimeoutError);
       expect(spawned[0]?.terminated).toBe(true);
+      expect(client.getStats().respawnCount).toBe(1);
 
       // Next query runs on cleanly respawned and rebooted worker.
       const recovered = await client.runCustomCypher('RETURN 1 AS ok');
@@ -966,6 +967,281 @@ describe('Seam 2 — ChokepointWorkerClient transport & recovery resilience', ()
       expect(recovered.rows).toEqual([{ ok: 1 }]);
       expect(spawned.length).toBe(2);
       expect(spawned[1]?.received.some((m) => m.type === 'boot')).toBe(true);
+    } finally {
+      client.dispose();
+    }
+  });
+
+  it('increments respawnCount on non-trap worker error events without double-counting', async () => {
+    const spawned: MockWorker[] = [];
+    const client = new ChokepointWorkerClient({
+      workerFactory: () => {
+        const w = new MockWorker((msg, worker) => {
+          if (msg.type === 'boot') {
+            queueMicrotask(() => {
+              worker.emitResponse({
+                type: 'result',
+                id: msg.id,
+                data: {
+                  bootMs: 1,
+                  batchesExecuted: 1,
+                  chunkSize: 5000,
+                  pointIndexesOnline: ['wp_loc_idx'],
+                  totalIndexesOnline: 1,
+                  counts: { waypoints: 1, ports: 1, countries: 1, maritimeEdges: 1, tradesWith: 0 },
+                },
+              });
+            });
+            return;
+          }
+          queueMicrotask(() => {
+            worker.emitResponse({
+              type: 'result',
+              id: msg.id,
+              data: {
+                ok: true,
+                cypher: msg.type === 'runCustomCypher' ? msg.cypher : '',
+                params: null,
+                columns: ['ok'],
+                columnTypes: ['INTEGER'],
+                rows: [{ ok: 1 }],
+                error: null,
+                telemetry: {
+                  elapsedMs: 1,
+                  executeMs: 1,
+                  planCache: 'miss',
+                  plan: null,
+                  notifications: [],
+                  stats: {},
+                },
+              },
+            });
+          });
+        });
+        spawned.push(w);
+        return w;
+      },
+      timeoutMs: 2000,
+    });
+
+    try {
+      await client.boot({ payloadUrl: '/data/graph.wasm.json' });
+      expect(client.getStats().respawnCount).toBe(0);
+
+      spawned[0]?.emitError({ message: 'Script load failure' });
+      expect(spawned[0]?.terminated).toBe(true);
+      expect(client.getStats().respawnCount).toBe(1);
+      expect(client.getStats().hasLiveWorker).toBe(false);
+
+      const recovered = await client.runCustomCypher('RETURN 1 AS ok');
+      expect(recovered.ok).toBe(true);
+      expect(spawned.length).toBe(2);
+      expect(client.getStats().respawnCount).toBe(1);
+    } finally {
+      client.dispose();
+    }
+  });
+
+  it('triggers worker termination and respawn when a superseded request replies with a WASM trap', async () => {
+    const spawned: MockWorker[] = [];
+    let firstRequestId: number | null = null;
+    const client = new ChokepointWorkerClient({
+      workerFactory: () => {
+        const workerIdx = spawned.length;
+        const w = new MockWorker((msg, worker) => {
+          if (msg.type === 'boot') {
+            queueMicrotask(() => {
+              worker.emitResponse({
+                type: 'result',
+                id: msg.id,
+                data: {
+                  bootMs: 1,
+                  batchesExecuted: 1,
+                  chunkSize: 5000,
+                  pointIndexesOnline: ['wp_loc_idx'],
+                  totalIndexesOnline: 1,
+                  counts: { waypoints: 1, ports: 1, countries: 1, maritimeEdges: 1, tradesWith: 0 },
+                },
+              });
+            });
+            return;
+          }
+
+          if (workerIdx === 0 && msg.type === 'evaluateScenario') {
+            if (firstRequestId === null) {
+              firstRequestId = msg.id;
+              return;
+            }
+            // Request B superseded A; now A's delayed WASM trap arrives from the poisoned worker.
+            const trappedId = firstRequestId;
+            queueMicrotask(() => {
+              worker.emitResponse({
+                type: 'error',
+                id: trappedId,
+                message: 'RuntimeError: unreachable executed in relate_bg.wasm',
+                wasmTrap: true,
+                cypher: 'MATCH (a)-[*]-(b) RETURN a',
+                telemetry: null,
+              });
+            });
+            return;
+          }
+
+          queueMicrotask(() => {
+            worker.emitResponse({
+              type: 'result',
+              id: msg.id,
+              data: {
+                ok: true,
+                cypher: msg.type === 'runCustomCypher' ? msg.cypher : '',
+                params: null,
+                columns: ['alive'],
+                columnTypes: ['BOOLEAN'],
+                rows: [{ alive: true }],
+                error: null,
+                telemetry: {
+                  elapsedMs: 1,
+                  executeMs: 1,
+                  planCache: 'miss',
+                  plan: null,
+                  notifications: [],
+                  stats: {},
+                },
+              },
+            });
+          });
+        });
+        spawned.push(w);
+        return w;
+      },
+      timeoutMs: 2000,
+    });
+
+    try {
+      await client.boot({ payloadUrl: '/data/graph.wasm.json' });
+      const reqA = client.evaluateScenario({ blockedPassageIds: ['northwest', 'suez'] });
+      const reqB = client.evaluateScenario({ blockedPassageIds: ['northwest', 'ormuz'] });
+
+      await expect(reqA).rejects.toThrow(StaleRequestError);
+      await expect(reqB).rejects.toThrow(WasmTrapError);
+      expect(spawned[0]?.terminated).toBe(true);
+      expect(client.getStats().respawnCount).toBe(1);
+
+      const followUp = await client.runCustomCypher('RETURN true AS alive');
+      expect(followUp.ok).toBe(true);
+      expect(followUp.rows).toEqual([{ alive: true }]);
+      expect(spawned.length).toBe(2);
+      expect(spawned[1]?.terminated).toBe(false);
+      expect(spawned[1]?.received.some((m) => m.type === 'boot')).toBe(true);
+    } finally {
+      client.dispose();
+    }
+  });
+
+  it('uses lastBootTimeoutMs during auto-respawn and cleans up unbooted worker when respawn boot fails', async () => {
+    const spawned: MockWorker[] = [];
+    let releaseWorker1BootError: (() => void) | null = null;
+    const client = new ChokepointWorkerClient({
+      workerFactory: () => {
+        const workerIdx = spawned.length;
+        const w = new MockWorker((msg, worker) => {
+          if (msg.type === 'boot') {
+            if (workerIdx === 1) {
+              // Transient HTTP 503 failure during first auto-respawn attempt, triggered deterministically.
+              releaseWorker1BootError = () => {
+                worker.emitResponse({
+                  type: 'error',
+                  id: msg.id,
+                  message: 'HTTP 503 Service Unavailable fetching graph.wasm.json',
+                  wasmTrap: false,
+                  cypher: null,
+                  telemetry: null,
+                });
+              };
+              return;
+            }
+            // Worker 2 boots slower (70ms) than query timeoutMs (40ms) but within boot timeoutMs (400ms).
+            const bootDelayMs = workerIdx === 2 ? 70 : 1;
+            setTimeout(() => {
+              worker.emitResponse({
+                type: 'result',
+                id: msg.id,
+                data: {
+                  bootMs: bootDelayMs,
+                  batchesExecuted: 1,
+                  chunkSize: 5000,
+                  pointIndexesOnline: ['wp_loc_idx'],
+                  totalIndexesOnline: 1,
+                  counts: { waypoints: 1, ports: 1, countries: 1, maritimeEdges: 1, tradesWith: 0 },
+                },
+              });
+            }, bootDelayMs);
+            return;
+          }
+
+          if (workerIdx === 0 && msg.type === 'runCustomCypher') {
+            queueMicrotask(() => {
+              worker.emitResponse({
+                type: 'error',
+                id: msg.id,
+                message: 'RuntimeError: unreachable executed',
+                wasmTrap: true,
+                cypher: msg.cypher,
+                telemetry: null,
+              });
+            });
+            return;
+          }
+
+          queueMicrotask(() => {
+            worker.emitResponse({
+              type: 'result',
+              id: msg.id,
+              data: {
+                ok: true,
+                cypher: msg.type === 'runCustomCypher' ? msg.cypher : '',
+                params: null,
+                columns: ['ok'],
+                columnTypes: ['INTEGER'],
+                rows: [{ ok: 1 }],
+                error: null,
+                telemetry: {
+                  elapsedMs: 1,
+                  executeMs: 1,
+                  planCache: 'miss',
+                  plan: null,
+                  notifications: [],
+                  stats: {},
+                },
+              },
+            });
+          });
+        });
+        spawned.push(w);
+        return w;
+      },
+      timeoutMs: 40,
+    });
+
+    try {
+      await client.boot({ payloadUrl: '/data/graph.wasm.json' }, { timeoutMs: 400 });
+      await expect(client.runCustomCypher('MATCH (n) RETURN n')).rejects.toThrow(WasmTrapError);
+      expect(releaseWorker1BootError).not.toBeNull();
+
+      // First post-trap call awaits the failing auto-respawn boot (HTTP 503).
+      const failedCall = client.runCustomCypher('RETURN 1 AS ok');
+      releaseWorker1BootError!();
+      await expect(failedCall).rejects.toThrow(/HTTP 503/);
+      // Failed unbooted worker #1 must be terminated so client knows no live worker exists.
+      expect(spawned[1]?.terminated).toBe(true);
+      expect(client.getStats().hasLiveWorker).toBe(false);
+
+      // Next call retries auto-respawn with lastBootTimeoutMs (400ms > 70ms > query 40ms) and succeeds.
+      const recovered = await client.runCustomCypher('RETURN 1 AS ok');
+      expect(recovered.ok).toBe(true);
+      expect(recovered.rows).toEqual([{ ok: 1 }]);
+      expect(spawned.length).toBe(3);
+      expect(spawned[2]?.terminated).toBe(false);
     } finally {
       client.dispose();
     }

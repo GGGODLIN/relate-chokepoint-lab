@@ -1,3 +1,4 @@
+import { parseRelateEnvelope, type ParsedRelateEnvelope } from '../engine/envelope.ts';
 import type { WasmGraphPayload } from './build-graph.ts';
 
 export const DEFAULT_UNWIND_CHUNK_SIZE = 5000;
@@ -157,9 +158,17 @@ export function loadWasmGraphPayloadIntoRelateDb(
   for (const batch of batches) {
     const paramsJson = batch.rows !== null ? JSON.stringify({ rows: batch.rows }) : null;
     const raw = db.execute(batch.cypher, paramsJson);
-    const parsed = JSON.parse(raw) as { error?: unknown };
-    if (parsed.error !== null && parsed.error !== undefined) {
-      throw new Error(`Relate WASM seed batch "${batch.label}" failed: ${JSON.stringify(parsed.error)}`);
+    let envelope: ParsedRelateEnvelope;
+    try {
+      envelope = parseRelateEnvelope(raw);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`Relate WASM seed batch "${batch.label}" returned invalid envelope: ${detail}`, {
+        cause: err,
+      });
+    }
+    if (envelope.error !== null) {
+      throw new Error(`Relate WASM seed batch "${batch.label}" failed: ${envelope.error}`);
     }
   }
   return {

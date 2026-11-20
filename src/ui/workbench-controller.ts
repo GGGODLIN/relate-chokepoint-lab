@@ -263,7 +263,7 @@ export class WorkbenchController {
   private engineMutated = false;
   private knownRespawns = 0;
   private graphEpoch = 0;
-  private resetCount = 0;
+  private boxResetEpoch = 0;
   private loopQueued = false;
   private nextToastId = 1;
   private nextBoxNumber = 1;
@@ -348,6 +348,7 @@ export class WorkbenchController {
   }
 
   selectPreset(presetId: string): void {
+    this.boxResetEpoch++;
     this.updateScenario(presetScenario(this.catalog, presetId));
   }
 
@@ -368,7 +369,7 @@ export class WorkbenchController {
   }
 
   resetAll(): void {
-    this.resetCount++;
+    this.boxResetEpoch++;
     const next = resetBlockades(this.catalog, this.state.scenario);
     if (this.engineMutated || this.state.graphMutated) {
       this.setState({ scenario: next, busy: true });
@@ -418,6 +419,17 @@ export class WorkbenchController {
     );
   }
 
+  private stalePortFocusPatch(
+    evaluation: Evaluation,
+  ): Partial<Pick<WorkbenchState, 'portFocus' | 'portQuery'>> {
+    const focus = this.state.portFocus;
+    if (focus === null) {
+      return {};
+    }
+    const stillIsolated = evaluation.isolation.ports.some((port) => port.code === focus.code);
+    return stillIsolated ? {} : { portFocus: null, portQuery: null };
+  }
+
   /** Coalesces bursts of clicks: always evaluates the newest scenario, discards superseded work. */
   private async evaluationLoop(): Promise<void> {
     this.loopQueued = false;
@@ -430,7 +442,7 @@ export class WorkbenchController {
         // react-doctor-disable-next-line async-await-in-loop
         const evaluation = await this.computeEvaluation(target, () => scenarioKey(this.state.scenario) === key);
         if (scenarioKey(this.state.scenario) === key) {
-          this.setState({ evaluation, evaluationError: null });
+          this.setState({ evaluation, evaluationError: null, ...this.stalePortFocusPatch(evaluation) });
         }
       } catch (err: unknown) {
         if (err instanceof SupersededError || isStale(err)) {
@@ -708,11 +720,15 @@ export class WorkbenchController {
     if (drag.exceedsMaxSpanWarning) {
       this.pushToast('warn', drag.warning ?? `Box spans ${drag.lonSpanDeg.toFixed(0)}° of longitude.`);
     }
-    const resetAtStart = this.resetCount;
+    const boxEpochAtStart = this.boxResetEpoch;
     this.setState({ pendingBox: box });
     return this.exclusive(async () => {
       try {
         await this.evaluationLoop();
+        if (this.boxResetEpoch !== boxEpochAtStart) {
+          this.requestEvaluation();
+          return;
+        }
         if (this.engineMutated) {
           // A Live Cypher write queued ahead of this box landed first; impact must be judged on the canonical graph.
           this.pushToast('warn', 'Restore the canonical graph before drawing boxes: Live Cypher changed it.');
@@ -732,10 +748,22 @@ export class WorkbenchController {
         if (match === undefined || match.matchedEdgeCount === 0) {
           // Zero-match boxes are skipped by the engine, so its graph already equals the base scenario.
           this.engineBoxesKey = boxesKey(base.boxes);
+          if (this.boxResetEpoch !== boxEpochAtStart) {
+            this.requestEvaluation();
+            return;
+          }
           this.pushToast('info', 'No sea-lane segments inside that box, so nothing was blocked. Map unchanged.');
           return;
         }
+        if (this.boxResetEpoch !== boxEpochAtStart) {
+          this.requestEvaluation();
+          return;
+        }
         const after = await this.computeEvaluation(candidate, () => true);
+        if (this.boxResetEpoch !== boxEpochAtStart) {
+          this.requestEvaluation();
+          return;
+        }
         if (!hasDetourImpact(before, after)) {
           const reverted = await this.client.applyCustomBoxes(toBoxInputs(base.boxes));
           this.noteApplied(reverted, boxesKey(base.boxes));
@@ -748,13 +776,13 @@ export class WorkbenchController {
         if (match.truncated) {
           this.pushToast('warn', `Box hit the ${DEFAULT_BBOX_EDGE_LIMIT}-segment cap; only the first ${DEFAULT_BBOX_EDGE_LIMIT} lanes were severed.`);
         }
-        if (this.resetCount !== resetAtStart) {
+        if (this.boxResetEpoch !== boxEpochAtStart) {
           this.requestEvaluation();
           return;
         }
         const latest = this.state.scenario;
         if (scenarioKey(latest) === scenarioKey(base)) {
-          this.setState({ scenario: candidate, evaluation: after });
+          this.setState({ scenario: candidate, evaluation: after, ...this.stalePortFocusPatch(after) });
         } else {
           this.setState({ scenario: addBox(latest, box) });
           this.requestEvaluation();
@@ -836,6 +864,9 @@ export class WorkbenchController {
   focusPort(code: string): Promise<void> {
     this.setState({ portFocus: { code, status: 'loading', partners: [], error: null } });
     return this.exclusive(async () => {
+      if (this.state.portFocus?.code !== code) {
+        return;
+      }
       const params = { code };
       try {
         const result = await this.client.runCustomCypher(PORT_PARTNERS_CYPHER, params);

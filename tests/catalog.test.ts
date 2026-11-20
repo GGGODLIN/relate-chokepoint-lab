@@ -138,6 +138,20 @@ describe('chokepoint-catalog contract against pinned real GeoJSON inputs', () =>
     expect(() => validateCatalog(rawCatalog, { marnetGeoJson: mutatedMarnet })).toThrowError(
       /kiel_canal/,
     );
+
+    // Object.prototype keys like __proto__, constructor, and toString must not bypass validation.
+    for (const protoKey of ['__proto__', 'constructor', 'toString']) {
+      const protoMarnet = {
+        type: 'FeatureCollection',
+        features: [
+          ...rawMarnetGeoJson.features,
+          { type: 'Feature', properties: { passage: protoKey } },
+        ],
+      };
+      expect(() => validateCatalog(rawCatalog, { marnetGeoJson: protoMarnet })).toThrowError(
+        new RegExp(protoKey),
+      );
+    }
   });
 
   it('fails closed when a catalog passage ID is missing from marnet GeoJSON', () => {

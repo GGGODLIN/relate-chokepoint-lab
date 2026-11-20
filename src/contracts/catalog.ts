@@ -125,7 +125,7 @@ function isNonEmptyString(value: unknown): value is string {
 function extractMarnetPassageCounts(
   rawGeoJson: unknown,
   violations: string[],
-): Record<string, number> | null {
+): Map<string, number> | null {
   if (!isRecord(rawGeoJson) || rawGeoJson.type !== 'FeatureCollection' || !Array.isArray(rawGeoJson.features)) {
     violations.push('marnetGeoJson must be a GeoJSON FeatureCollection with a features array');
     return null;
@@ -135,7 +135,7 @@ function extractMarnetPassageCounts(
     return null;
   }
 
-  const counts: Record<string, number> = {};
+  const counts = new Map<string, number>();
   for (let i = 0; i < rawGeoJson.features.length; i++) {
     const feat: unknown = rawGeoJson.features[i];
     if (!isRecord(feat) || feat.type !== 'Feature') {
@@ -158,7 +158,7 @@ function extractMarnetPassageCounts(
       violations.push(`marnetGeoJson.features[${i}].properties.passage must be a non-empty string or null`);
       continue;
     }
-    counts[rawPassage] = (counts[rawPassage] ?? 0) + 1;
+    counts.set(rawPassage, (counts.get(rawPassage) ?? 0) + 1);
   }
 
   return counts;
@@ -410,19 +410,19 @@ export function validateCatalog(
 
   let marnetPassageCounts: Record<string, number> | null = null;
   if (options.marnetGeoJson !== undefined) {
-    marnetPassageCounts = extractMarnetPassageCounts(options.marnetGeoJson, violations);
-    if (marnetPassageCounts !== null) {
-      const rawPassageIds = new Set(Object.keys(marnetPassageCounts));
-      for (const rawId of rawPassageIds) {
+    const countsMap = extractMarnetPassageCounts(options.marnetGeoJson, violations);
+    if (countsMap !== null) {
+      for (const rawId of countsMap.keys()) {
         if (!passageIds.has(rawId)) {
           violations.push(`marnetGeoJson passage tag "${rawId}" is missing from catalog.passages`);
         }
       }
       for (const catalogId of passageIds) {
-        if (!rawPassageIds.has(catalogId)) {
+        if (!countsMap.has(catalogId)) {
           violations.push(`catalog passage id "${catalogId}" does not appear in marnetGeoJson`);
         }
       }
+      marnetPassageCounts = Object.fromEntries(countsMap);
     }
   }
 

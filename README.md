@@ -304,14 +304,14 @@ All artifacts flow deterministically and unidirectionally from pinned open geosp
 
 - **~250 km topological equidistant BFS approximation:** Every route is computed 100% inside Relate `v1.1.0` using unweighted `shortestPath()` over `~250 km` resampled sea-lane edges, then summed over each traversed edge's Haversine `r.km`. It is designed for rapid macroscopic corridor and connectivity disruption analysis — not nautical navigation, vessel draft/canal beam constraints, ice-class routing, or real-time AIS/schedule optimization.
 - **Arctic default:** `PASSAGE_NORTHWEST` is blocked by default to reflect routine non-icebreaker commercial shipping; users can explicitly reopen it from the passage panel.
-- **Browser custom blockades & Live Cypher writes:** Drawing a custom blockade box or executing a write query in Live Cypher mutates only the current browser tab's disposable `:memory:` Relate instance (zero OPFS) and can be reset to the canonical graph with one click; `data/chokepoint.rl` is never touched by the browser.
+- **Browser custom blockades & Live Cypher writes:** Drawing a custom blockade box or executing a write query in Live Cypher mutates only the current browser tab's disposable `:memory:` Relate instance (zero OPFS) and can be reset to the canonical graph with one click; `data/chokepoint.rl` is never touched by the browser. Custom boxes resolve severed lanes by matching `:WP(loc)` corridor endpoints via `point.withinBBox()` and the `POINT INDEX`, so an ultra-narrow box spanning only the middle of a single `~250 km` resampled segment without enclosing either endpoint will report 0 lanes.
 
 ### Datasets & Licenses
 
 | Asset / Dependency | Source | License |
 |---|---|---|
 | `data/raw/marnet_searoute.geojson`, `data/raw/ports.geojson` | [`searoute-py`](https://github.com/genthalili/searoute-py) (Eurostat / Marnet) | Apache License 2.0 (see [`NOTICE`](/NOTICE)) |
-| `public/data/land.geojson` | [Natural Earth 1:50m Land Polygons](https://www.naturalearthdata.com/about/terms-of-use/) | Public Domain (see [`NOTICE`](/NOTICE)) |
+| `public/data/land.geojson` | [Natural Earth 1:50m Land Polygons](https://www.naturalearthdata.com/about/terms-of-use/) | Public Domain |
 | `relate` CLI & `@relate/relate-wasm@1.1.0` | Relate by Neo4j | Apache License 2.0 (binary) |
 | Chokepoint Lab application, ETL & tests | This repository | MIT License (see [`LICENSE`](/LICENSE)) |
 

@@ -13,7 +13,15 @@ import type {
   ScenarioEvaluationResult,
 } from '../src/engine/chokepoint-engine.ts';
 import type { QueryTelemetry } from '../src/engine/envelope.ts';
-import { StaleRequestError, WorkerTimeoutError } from '../src/engine/worker-client.ts';
+import {
+  ChokepointWorkerClient,
+  StaleRequestError,
+  WorkerTimeoutError,
+  type WorkerErrorEventLike,
+  type WorkerLike,
+  type WorkerMessageEventLike,
+} from '../src/engine/worker-client.ts';
+import type { WorkerRequest, WorkerResponse } from '../src/engine/worker-protocol.ts';
 import { odKey, scenarioKey, type Evaluation, type Scenario } from '../src/ui/model.ts';
 import {
   WorkbenchController,
@@ -628,6 +636,295 @@ describe('workbench controller under random interleavings (fake worker boundary)
     expect(state.scenario.boxes.map((b) => b.id)).toEqual(['box-1']);
     expect(worker.graph.applied.map((a) => a.id)).toEqual(['box-1']);
     expect(state.evaluation?.hero.totalKm).toBe(19882.1 + 700);
+  });
+
+  it('replay: selecting a preset while a box proposal is in flight discards the stale box and reconciles the engine', async () => {
+    const { worker, controller, violations } = await bootWith(FIFO, (promise) => promise);
+    let selectPresetFired = false;
+    const origApply = worker.applyCustomBoxes.bind(worker);
+    worker.applyCustomBoxes = (boxes) => {
+      const pending = origApply(boxes);
+      // Trigger selectPreset mid-proposal, after the trial box has been dispatched to the engine.
+      if (!selectPresetFired && boxes.length > 0) {
+        selectPresetFired = true;
+        controller.selectPreset('hormuz');
+      }
+      return pending;
+    };
+
+    const proposal = controller.proposeBox(encodeBox({ lanes: 4, detourKm: 700, isolates: 0 }));
+    await proposal;
+    await controller.whenIdle();
+
+    const state = controller.getSnapshot();
+    expect(selectPresetFired).toBe(true);
+    expect(state.scenario.boxes).toEqual([]);
+    expect(state.scenario.blocked).toContain('ormuz');
+    expect(worker.graph.applied).toEqual([]);
+    expect(checkQuiescent(state, worker, true)).toBeNull();
+    expect(violations).toEqual([]);
+  });
+
+  it('replay: custom boxes are re-applied after a real ChokepointWorkerClient timeout respawn', async () => {
+    const appliedBoxesByWorker: string[][] = [];
+    let workerCount = 0;
+
+    class TimeoutMockWorker implements WorkerLike {
+      readonly idx: number;
+      terminated = false;
+      private readonly msgListeners = new Set<(e: WorkerMessageEventLike<WorkerResponse>) => void>();
+      private readonly errListeners = new Set<(e: WorkerErrorEventLike) => void>();
+      private applied: { id: string; spec: BoxSpec }[] = [];
+      private hungOnce = false;
+
+      constructor(idx: number) {
+        this.idx = idx;
+      }
+
+      postMessage(message: unknown): void {
+        const msg = message as WorkerRequest;
+        if (msg.type === 'boot') {
+          this.applied = [];
+          queueMicrotask(() =>
+            this.emit({
+              type: 'result',
+              id: msg.id,
+              data: {
+                bootMs: 1,
+                batchesExecuted: 1,
+                chunkSize: 1,
+                pointIndexesOnline: [],
+                totalIndexesOnline: 0,
+                counts: { waypoints: 1, ports: 1, countries: 1, maritimeEdges: 1, tradesWith: 1 },
+              },
+            }),
+          );
+          return;
+        }
+        if (msg.type === 'getPorts') {
+          queueMicrotask(() => this.emit({ type: 'result', id: msg.id, data: [] }));
+          return;
+        }
+        if (msg.type === 'applyCustomBoxes') {
+          this.applied = msg.boxes.map((b) => ({ id: b.id, spec: decodeBox(b) }));
+          appliedBoxesByWorker[this.idx] = this.applied.map((a) => a.id);
+          const matches = msg.boxes.map((b) => {
+            const spec = decodeBox(b);
+            const ids = Array.from({ length: spec.lanes }, (_, i) => `${b.id}-e${i}`);
+            return { boxId: b.id, matchedEdgeIds: ids, matchedEdgeCount: ids.length, truncated: false };
+          });
+          const total = matches.reduce((sum, m) => sum + m.matchedEdgeCount, 0);
+          queueMicrotask(() =>
+            this.emit({
+              type: 'result',
+              id: msg.id,
+              data: {
+                matchedEdgeCount: total,
+                deletedEdgeCount: total,
+                mutated: total > 0,
+                reseeded: false,
+                reseedMs: null,
+                activeBoxCount: this.applied.length,
+                activeBoxIds: this.applied.map((a) => a.id),
+                truncated: false,
+                boxMatches: matches,
+                cypher: null,
+                telemetry: null,
+              },
+            }),
+          );
+          return;
+        }
+        if (msg.type === 'evaluateScenario') {
+          // Hang worker 0 once a passage toggle triggers re-evaluation while a box is active.
+          if (this.idx === 0 && !this.hungOnce && msg.request.blockedPassageIds.includes('malacca')) {
+            this.hungOnce = true;
+            return;
+          }
+          const blocked = [...msg.request.blockedPassageIds];
+          const km = routeKm(
+            `${msg.request.routeFrom ?? ''}->${msg.request.routeTo ?? ''}`,
+            blocked,
+            this.applied.map((a) => a.spec),
+            0,
+          );
+          const count = isolatedCount(blocked, this.applied.map((a) => a.spec));
+          queueMicrotask(() =>
+            this.emit({
+              type: 'result',
+              id: msg.id,
+              data: {
+                blockedPassageIds: blocked,
+                openRelTypes: [],
+                customBoxResult: null,
+                route: {
+                  fromCode: msg.request.routeFrom ?? '',
+                  toCode: msg.request.routeTo ?? '',
+                  hops: km === null ? null : 100,
+                  totalKm: km,
+                  isolated: km === null,
+                  shortCircuited: false,
+                  coords: [],
+                  segments: [],
+                  nodeIds: [],
+                  edgeIds: [],
+                  passagesTraversed: [],
+                  cypher: 'MATCH route',
+                  params: {},
+                  telemetry: ZERO_TELEMETRY,
+                },
+                isolation: {
+                  referenceHubCode: catalog.referenceHubCode,
+                  totalPorts: 758,
+                  reachablePorts: 758 - count,
+                  isolatedCount: count,
+                  isolatedPorts: [],
+                  cypher: 'MATCH isolation',
+                  params: {},
+                  telemetry: ZERO_TELEMETRY,
+                },
+                tradeExposure: { countries: [], cypher: 'MATCH trade', params: {}, telemetry: ZERO_TELEMETRY },
+                totalElapsedMs: 1,
+              },
+            }),
+          );
+          return;
+        }
+        if (msg.type === 'queryRoute') {
+          const km = routeKm(`${msg.fromCode}->${msg.toCode}`, msg.blockedPassageIds, this.applied.map((a) => a.spec), 0);
+          queueMicrotask(() =>
+            this.emit({
+              type: 'result',
+              id: msg.id,
+              data: {
+                fromCode: msg.fromCode,
+                toCode: msg.toCode,
+                hops: km === null ? null : 100,
+                totalKm: km,
+                isolated: km === null,
+                shortCircuited: false,
+                coords: [],
+                segments: [],
+                nodeIds: [],
+                edgeIds: [],
+                passagesTraversed: [],
+                cypher: 'MATCH route',
+                params: {},
+                telemetry: ZERO_TELEMETRY,
+              },
+            }),
+          );
+        }
+      }
+
+      emit(resp: WorkerResponse): void {
+        if (this.terminated) {
+          return;
+        }
+        for (const listener of [...this.msgListeners]) {
+          listener({ data: resp });
+        }
+      }
+
+      terminate(): void {
+        this.terminated = true;
+        this.msgListeners.clear();
+        this.errListeners.clear();
+      }
+
+      addEventListener(
+        type: 'message' | 'error',
+        listener:
+          | ((e: WorkerMessageEventLike<WorkerResponse>) => void)
+          | ((e: WorkerErrorEventLike) => void),
+      ): void {
+        if (type === 'message') {
+          this.msgListeners.add(listener as (e: WorkerMessageEventLike<WorkerResponse>) => void);
+        } else {
+          this.errListeners.add(listener as (e: WorkerErrorEventLike) => void);
+        }
+      }
+
+      removeEventListener(
+        type: 'message' | 'error',
+        listener:
+          | ((e: WorkerMessageEventLike<WorkerResponse>) => void)
+          | ((e: WorkerErrorEventLike) => void),
+      ): void {
+        if (type === 'message') {
+          this.msgListeners.delete(listener as (e: WorkerMessageEventLike<WorkerResponse>) => void);
+        } else {
+          this.errListeners.delete(listener as (e: WorkerErrorEventLike) => void);
+        }
+      }
+    }
+
+    const client = new ChokepointWorkerClient({
+      workerFactory: () => new TimeoutMockWorker(workerCount++),
+      timeoutMs: 30,
+    });
+    const controller = new WorkbenchController(client, catalog);
+
+    try {
+      await controller.start(async () => ({ payloadUrl: 'fake://graph' }));
+      await controller.whenIdle();
+
+      await controller.proposeBox(encodeBox({ lanes: 4, detourKm: 700, isolates: 0 }));
+      await controller.whenIdle();
+      expect(controller.getSnapshot().scenario.boxes.map((b) => b.id)).toEqual(['box-1']);
+      expect(appliedBoxesByWorker[0]).toEqual(['box-1']);
+
+      // Toggling malacca hangs worker 0 -> timeout increments respawnCount -> worker 1 boots & re-applies box-1.
+      controller.togglePassage('malacca');
+      await controller.whenIdle();
+
+      const state = controller.getSnapshot();
+      expect(client.getStats().respawnCount).toBe(1);
+      expect(workerCount).toBe(2);
+      expect(appliedBoxesByWorker[1]).toEqual(['box-1']);
+      expect(state.evaluationError).toBeNull();
+      expect(state.evaluation?.hero.totalKm).toBe(19882.1 + 900 + 700);
+    } finally {
+      client.dispose();
+    }
+  });
+
+  it('clears stale portFocus and portQuery on scenario switch and discards late focusPort replies', async () => {
+    const { worker, controller } = await bootWith(FIFO, (promise) => promise);
+
+    controller.selectPreset('hormuz');
+    await controller.whenIdle();
+    expect(controller.getSnapshot().evaluation?.isolation.ports.some((p) => p.code === 'P0')).toBe(true);
+
+    await controller.focusPort('P0');
+    expect(controller.getSnapshot().portFocus?.code).toBe('P0');
+    expect(controller.getSnapshot().portFocus?.status).toBe('ready');
+    expect(controller.getSnapshot().portQuery).not.toBeNull();
+
+    // Switching back to default blockade removes P0 from isolated ports -> portFocus & portQuery cleared.
+    controller.resetAll();
+    await controller.whenIdle();
+    expect(controller.getSnapshot().portFocus).toBeNull();
+    expect(controller.getSnapshot().portQuery).toBeNull();
+
+    // Late focusPort reply after clearPortFocus must be discarded.
+    let resolveCypher!: () => void;
+    const gate = new Promise<void>((r) => {
+      resolveCypher = r;
+    });
+    const origCypher = worker.runCustomCypher.bind(worker);
+    worker.runCustomCypher = async (cypher, params) => {
+      await gate;
+      return origCypher(cypher, params);
+    };
+
+    const lateFocus = controller.focusPort('P0');
+    controller.clearPortFocus();
+    resolveCypher();
+    await lateFocus;
+
+    expect(controller.getSnapshot().portFocus).toBeNull();
+    expect(controller.getSnapshot().portQuery).toBeNull();
   });
 
   it('oracle calibration: each invariant check rejects a known-bad state', async () => {

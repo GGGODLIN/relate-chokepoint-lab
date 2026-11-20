@@ -7,7 +7,7 @@ export interface PresetCard {
 
 /**
  * Button copy is static so it renders before the worker boots. Every number here is
- * re-derived from the real Relate engine in tests/scenario-presets.test.ts; the older
+ * re-derived from the real Relate engine in tests/workbench-engine.test.ts; the older
  * 52 / 25 / 450 estimates were wrong and must never come back.
  */
 export const PRESET_CARDS: readonly PresetCard[] = [
