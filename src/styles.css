@@ -169,6 +169,12 @@ body {
   outline: none;
 }
 
+/* Keyboard users still need to see that the chart has focus (arrow keys pan it). */
+.maplibregl-canvas:focus-visible {
+  outline: 2px solid var(--color-lane);
+  outline-offset: -2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal,
   .choke-marker[data-blocked='true']::before {

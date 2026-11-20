@@ -234,7 +234,7 @@ function PortPicker({ label, ports, valueCode, disabled, onSelect }: PortPickerP
           onBlur={() => setOpen(false)}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onKeyDown}
-          className="tabular min-w-0 flex-1 border border-rule-strong bg-abyss px-2 py-1 text-[12px] text-ink placeholder:text-ink-faint focus:border-lane focus:outline-none disabled:opacity-50"
+          className="tabular min-w-0 flex-1 border border-rule-strong bg-abyss px-2 py-1 text-[12px] text-ink placeholder:text-ink-faint focus:border-lane focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-lane disabled:opacity-50"
         />
       </label>
       {open && results.length > 0 ? (
