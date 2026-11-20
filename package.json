@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "probe": "node scripts/probe-toolchain.mjs",
     "build:graph": "node scripts/build-graph.mjs",
+    "build:land": "node scripts/build-land.mjs",
     "verify:parity": "node scripts/verify-parity.mjs",
     "verify:rollback": "node scripts/verify-cli-rollback.mjs"
   },
