@@ -5,3 +5,4 @@ data/graph.canonical.json
 *.log
 .DS_Store
 coverage/
+.vercel
