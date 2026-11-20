@@ -6,6 +6,8 @@ Global maritime chokepoint blockade simulator powered 100% by **Relate `v1.1.0`*
 - **Repository:** [GGGODLIN/relate-chokepoint-lab](https://github.com/GGGODLIN/relate-chokepoint-lab)
 - **Engine:** Relate `v1.1.0` (`@relate/relate-wasm@1.1.0` + native `relate` CLI/MCP) · Cypher 25
 
+![Chokepoint Lab — Suez + Bab el-Mandeb blockade showing +6,061.1 km Cape of Good Hope detour, corridor pressure heatmap, and 9 isolated Red Sea terminals](docs/screenshots/02-suez-babalmandab-1440x900.png)
+
 ### 15-Second Judge Tour
 
 1. **Open the live workbench** — Relate WASM `v1.1.0` boots inside a Dedicated Web Worker (`:memory:`, zero OPFS, zero backend server, zero third-party map tile requests) and seeds 10,560 waypoints, 758 Tier-1 ports, 175 countries, and 23,986 relationships in under a second.
