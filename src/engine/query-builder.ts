@@ -5,7 +5,6 @@ export const DEFAULT_BBOX_EDGE_LIMIT = 500;
 
 export interface RouteQueryOptions {
   readonly shortCircuitSameWaypoint?: boolean;
-  readonly includeGeometry?: boolean;
   readonly profile?: boolean;
 }
 
@@ -54,32 +53,21 @@ export function buildRouteQuery(
 
   const openRelTypes = getOpenRelTypes(catalog, blockedPassageIds);
   const relPattern = buildStaticRelTypeDisjunction(openRelTypes);
-  const includeGeometry = options.includeGeometry ?? true;
-
-  const returnCols = [
-    'RETURN a.code AS fromCode,',
-    '       b.code AS toCode,',
-    '       (a = b OR a.snapWpId = b.snapWpId) AS shortCircuited,',
-    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId THEN 0 WHEN p IS NULL THEN null ELSE length(p) END AS hops,',
-    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId THEN 0.0 WHEN p IS NULL THEN null ELSE round(reduce(km = 0.0, r IN relationships(p) | km + r.km), 1) END AS totalKm',
-  ];
-
-  if (includeGeometry) {
-    returnCols[returnCols.length - 1] += ',';
-    returnCols.push(
-      '       CASE WHEN a = b THEN [[a.lon, a.lat]] WHEN a.snapWpId = b.snapWpId THEN [[a.lon, a.lat], [b.lon, b.lat]] WHEN p IS NULL THEN [] ELSE [n IN nodes(p) | [n.lon, n.lat]] END AS coords,',
-      '       CASE WHEN a = b THEN [a.code] WHEN a.snapWpId = b.snapWpId THEN [a.code, b.code] WHEN p IS NULL THEN [] ELSE [n IN nodes(p) | coalesce(n.id, n.code)] END AS nodeIds,',
-      '       CASE WHEN a = b OR a.snapWpId = b.snapWpId OR p IS NULL THEN [] ELSE [r IN relationships(p) | r.id] END AS edgeIds,',
-      '       CASE WHEN a = b OR a.snapWpId = b.snapWpId OR p IS NULL THEN [] ELSE [r IN relationships(p) | type(r)] END AS relTypes',
-    );
-  }
 
   // WHERE a <> b guards ShortestPathCommonEndNodes on the node endpoints without adding any edge predicate.
   const query = [
     'MATCH (a:Port {code: $from}), (b:Port {code: $to})',
     `OPTIONAL MATCH p = shortestPath((a)-[${relPattern}*]-(b))`,
     'WHERE a <> b',
-    ...returnCols,
+    'RETURN a.code AS fromCode,',
+    '       b.code AS toCode,',
+    '       (a = b OR a.snapWpId = b.snapWpId) AS shortCircuited,',
+    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId THEN 0 WHEN p IS NULL THEN null ELSE length(p) END AS hops,',
+    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId THEN 0.0 WHEN p IS NULL THEN null ELSE round(reduce(km = 0.0, r IN relationships(p) | km + r.km), 1) END AS totalKm,',
+    '       CASE WHEN a = b THEN [[a.lon, a.lat]] WHEN a.snapWpId = b.snapWpId THEN [[a.lon, a.lat], [b.lon, b.lat]] WHEN p IS NULL THEN [] ELSE [n IN nodes(p) | [n.lon, n.lat]] END AS coords,',
+    '       CASE WHEN a = b THEN [a.code] WHEN a.snapWpId = b.snapWpId THEN [a.code, b.code] WHEN p IS NULL THEN [] ELSE [n IN nodes(p) | coalesce(n.id, n.code)] END AS nodeIds,',
+    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId OR p IS NULL THEN [] ELSE [r IN relationships(p) | r.id] END AS edgeIds,',
+    '       CASE WHEN a = b OR a.snapWpId = b.snapWpId OR p IS NULL THEN [] ELSE [r IN relationships(p) | type(r)] END AS relTypes',
   ].join('\n');
 
   return options.profile ? wrapWithProfile(query) : query;
@@ -126,8 +114,8 @@ export function buildTradeExposureForPortsQuery(options: ProfileQueryOptions = {
   return options.profile ? wrapWithProfile(query) : query;
 }
 
-export function buildBBoxEdgesQuery(options: ProfileQueryOptions = {}): string {
-  const query = [
+export function buildBBoxEdgesQuery(): string {
+  return [
     'UNWIND $boxes AS box',
     'MATCH (w:WP)',
     'WHERE point.withinBBox(w.loc, point({longitude: box.swLon, latitude: box.swLat}), point({longitude: box.neLon, latitude: box.neLat}))',
@@ -135,8 +123,6 @@ export function buildBBoxEdgesQuery(options: ProfileQueryOptions = {}): string {
     'RETURN DISTINCT r.id AS edgeId, type(r) AS relType, r.km AS km',
     'LIMIT $limit',
   ].join('\n');
-
-  return options.profile ? wrapWithProfile(query) : query;
 }
 
 export function buildDeleteEdgesByIdsQuery(): string {

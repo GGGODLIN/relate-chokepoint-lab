@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import graphWasmUrl from 'virtual:graph-wasm-url';
 import { getBundledCatalog } from './contracts/catalog.ts';
 import { ChokepointWorkerClient } from './engine/worker-client.ts';
 import { App } from './ui/App.tsx';
@@ -9,9 +10,7 @@ import './styles.css';
 
 const catalog = getBundledCatalog();
 const controller = new WorkbenchController(new ChokepointWorkerClient(), catalog);
-void controller.start((onProgress) =>
-  fetchPayloadAsBlobUrl(`${import.meta.env.BASE_URL}data/graph.wasm.json`, onProgress),
-);
+void controller.start((onProgress) => fetchPayloadAsBlobUrl(graphWasmUrl, onProgress));
 
 const container = document.getElementById('root');
 if (container === null) {

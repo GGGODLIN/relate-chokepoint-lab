@@ -87,18 +87,6 @@ export function interpolateAntimeridian(c1: LonLat, c2: LonLat, t: number): [num
   return [lon, lat];
 }
 
-export function polylineLengthKm(coords: readonly LonLat[]): number {
-  let total = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    const a = coords[i];
-    const b = coords[i + 1];
-    if (a && b) {
-      total += haversineKm(a[0], a[1], b[0], b[1]);
-    }
-  }
-  return total;
-}
-
 /**
  * Resamples a polyline uniformly by arc length around `stepKm`, always
  * preserving the exact start and end coordinates. `minSegments` allows callers

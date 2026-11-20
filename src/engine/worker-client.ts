@@ -5,7 +5,6 @@ import type {
   CustomBBoxApplyResult,
   CustomBBoxInput,
   CypherExecutionResult,
-  EngineMetadata,
   PortRecord,
   RouteEvaluationResult,
   ScenarioEvaluationRequest,
@@ -55,12 +54,10 @@ export interface BootSource {
 export interface ChokepointWorkerClientOptions {
   readonly workerFactory?: WorkerFactory;
   readonly timeoutMs?: number;
-  readonly autoRespawn?: boolean;
 }
 
 export interface CallOptions {
   readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
 }
 
 export class StaleRequestError extends Error {
@@ -144,7 +141,6 @@ interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: unknown) => void;
   readonly timer: ReturnType<typeof setTimeout>;
-  readonly abortCleanup: (() => void) | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -158,7 +154,6 @@ function createDefaultBrowserWorker(): WorkerLike {
 export class ChokepointWorkerClient {
   private readonly workerFactory: WorkerFactory;
   private readonly timeoutMs: number;
-  private readonly autoRespawn: boolean;
 
   private worker: WorkerLike | null = null;
   private nextRequestId = 1;
@@ -182,7 +177,6 @@ export class ChokepointWorkerClient {
     this.workerFactory = options.workerFactory ?? createDefaultBrowserWorker;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.lastBootTimeoutMs = this.timeoutMs;
-    this.autoRespawn = options.autoRespawn ?? true;
 
     this.boundOnMessage = (event) => {
       this.handleWorkerMessage(event.data);
@@ -243,9 +237,6 @@ export class ChokepointWorkerClient {
 
   private clearPendingEntry(entry: PendingRequest): void {
     clearTimeout(entry.timer);
-    if (entry.abortCleanup !== null) {
-      entry.abortCleanup();
-    }
     this.pending.delete(entry.id);
     if (entry.channel !== null && this.latestByChannel.get(entry.channel) === entry.id) {
       this.latestByChannel.delete(entry.channel);
@@ -261,7 +252,7 @@ export class ChokepointWorkerClient {
   }
 
   private triggerAutoRespawn(): Promise<void> {
-    if (this.disposed || !this.autoRespawn) {
+    if (this.disposed || this.lastBootSource === null) {
       return Promise.resolve();
     }
     if (this.respawnPromise !== null) {
@@ -275,28 +266,26 @@ export class ChokepointWorkerClient {
         throw new WorkerDisposedError();
       }
       const spawned = this.spawnWorker();
-      if (source !== null) {
-        try {
-          await this.sendRawRequest<BootTelemetry>(
-            (id) => ({
-              type: 'boot',
-              id,
-              payload: source.payload,
-              payloadUrl: source.payloadUrl,
-              chunkSize: source.chunkSize,
-            }),
-            {
-              channel: null,
-              cypher: null,
-              timeoutMs: bootTimeoutMs,
-            },
-          );
-        } catch (err) {
-          if (this.worker === spawned) {
-            this.terminateCurrentWorker();
-          }
-          throw err;
+      try {
+        await this.sendRawRequest<BootTelemetry>(
+          (id) => ({
+            type: 'boot',
+            id,
+            payload: source.payload,
+            payloadUrl: source.payloadUrl,
+            chunkSize: source.chunkSize,
+          }),
+          {
+            channel: null,
+            cypher: null,
+            timeoutMs: bootTimeoutMs,
+          },
+        );
+      } catch (err) {
+        if (this.worker === spawned) {
+          this.terminateCurrentWorker();
         }
+        throw err;
       }
       if (this.disposed) {
         this.terminateCurrentWorker();
@@ -348,7 +337,7 @@ export class ChokepointWorkerClient {
         ),
     );
 
-    if (!this.disposed && this.autoRespawn) {
+    if (!this.disposed && this.lastBootSource !== null) {
       this.triggerAutoRespawn();
     }
   }
@@ -360,7 +349,7 @@ export class ChokepointWorkerClient {
 
     const entry = this.pending.get(msg.id);
     if (entry === undefined) {
-      // Response belongs to a superseded, cancelled, or timed-out request.
+      // Response belongs to a superseded or timed-out request.
       this.discardedStaleCount++;
       if (msg.type === 'error' && (msg.wasmTrap || isWasmTrap(new Error(msg.message)))) {
         this.handleWasmTrapFailure(null, msg.message, msg.cypher ?? null, msg.telemetry);
@@ -414,14 +403,10 @@ export class ChokepointWorkerClient {
       readonly channel: string | null;
       readonly cypher: string | null;
       readonly timeoutMs: number;
-      readonly signal?: AbortSignal;
     },
   ): Promise<T> {
     if (this.disposed) {
       return Promise.reject(new WorkerDisposedError());
-    }
-    if (opts.signal?.aborted) {
-      return Promise.reject(new Error('Request aborted before dispatch'));
     }
 
     const id = this.nextRequestId++;
@@ -460,25 +445,10 @@ export class ChokepointWorkerClient {
           (other) =>
             new WorkerTimeoutError(other.requestType, opts.timeoutMs, other.cypher),
         );
-        if (!this.disposed && this.autoRespawn && this.lastBootSource !== null) {
+        if (!this.disposed && this.lastBootSource !== null) {
           this.triggerAutoRespawn();
         }
       }, opts.timeoutMs);
-
-      let abortCleanup: (() => void) | null = null;
-      if (opts.signal !== undefined) {
-        const onAbort = () => {
-          const active = this.pending.get(id);
-          if (active !== undefined) {
-            this.clearPendingEntry(active);
-            active.reject(new Error(`Request #${id} aborted`));
-          }
-        };
-        opts.signal.addEventListener('abort', onAbort, { once: true });
-        abortCleanup = () => {
-          opts.signal?.removeEventListener('abort', onAbort);
-        };
-      }
 
       const entry: PendingRequest = {
         id,
@@ -488,7 +458,6 @@ export class ChokepointWorkerClient {
         resolve: (value) => resolve(value as T),
         reject,
         timer,
-        abortCleanup,
       };
       this.pending.set(id, entry);
 
@@ -512,7 +481,7 @@ export class ChokepointWorkerClient {
       }
       return;
     }
-    if (this.worker === null && this.lastBootSource !== null && this.autoRespawn) {
+    if (this.worker === null && this.lastBootSource !== null) {
       await this.triggerAutoRespawn();
       if (this.disposed) {
         throw new WorkerDisposedError();
@@ -526,7 +495,6 @@ export class ChokepointWorkerClient {
       readonly channel: string | null;
       readonly cypher: string | null;
       readonly timeoutMs: number;
-      readonly signal?: AbortSignal;
     },
   ): Promise<T> {
     if (this.disposed) {
@@ -539,8 +507,7 @@ export class ChokepointWorkerClient {
     }
 
     const needsAsyncReady =
-      this.respawnPromise !== null ||
-      (this.worker === null && this.lastBootSource !== null && this.autoRespawn);
+      this.respawnPromise !== null || (this.worker === null && this.lastBootSource !== null);
 
     if (!needsAsyncReady) {
       return this.sendRawRequest<T>(buildMessage, opts);
@@ -583,7 +550,6 @@ export class ChokepointWorkerClient {
         channel: null,
         cypher: null,
         timeoutMs: bootTimeoutMs,
-        signal: options.signal,
       },
     );
   }
@@ -607,7 +573,6 @@ export class ChokepointWorkerClient {
         channel: 'route',
         cypher: null,
         timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
       },
     );
   }
@@ -626,7 +591,6 @@ export class ChokepointWorkerClient {
         channel: 'scenario',
         cypher: null,
         timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
       },
     );
   }
@@ -646,7 +610,6 @@ export class ChokepointWorkerClient {
         channel: 'customBoxes',
         cypher: null,
         timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
       },
     );
   }
@@ -668,19 +631,6 @@ export class ChokepointWorkerClient {
         channel: null,
         cypher,
         timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
-      },
-    );
-  }
-
-  getMetadata(options: CallOptions = {}): Promise<EngineMetadata> {
-    return this.dispatchWhenReady<EngineMetadata>(
-      (id) => ({ type: 'getMetadata', id }),
-      {
-        channel: null,
-        cypher: null,
-        timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
       },
     );
   }
@@ -692,7 +642,6 @@ export class ChokepointWorkerClient {
         channel: null,
         cypher: null,
         timeoutMs: options.timeoutMs ?? this.timeoutMs,
-        signal: options.signal,
       },
     );
   }

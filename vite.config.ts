@@ -1,9 +1,57 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+const GRAPH_WASM_VIRTUAL_ID = 'virtual:graph-wasm-url';
+const GRAPH_WASM_RESOLVED_ID = `\0${GRAPH_WASM_VIRTUAL_ID}`;
+
+function hashedGraphWasmPlugin(): Plugin {
+  let command: 'serve' | 'build' = 'build';
+  let base = '/';
+  let rootDir = process.cwd();
+  let emittedRefId: string | null = null;
+
+  return {
+    name: 'hashed-graph-wasm-url',
+    configResolved(config) {
+      command = config.command;
+      base = config.base;
+      rootDir = config.root;
+    },
+    resolveId(id) {
+      if (id === GRAPH_WASM_VIRTUAL_ID) {
+        return GRAPH_WASM_RESOLVED_ID;
+      }
+      return undefined;
+    },
+    load(id) {
+      if (id !== GRAPH_WASM_RESOLVED_ID) {
+        return undefined;
+      }
+      if (command === 'serve') {
+        return `export default ${JSON.stringify(`${base}data/graph.wasm.json`)};`;
+      }
+      const source = readFileSync(resolve(rootDir, 'public/data/graph.wasm.json'));
+      emittedRefId = this.emitFile({
+        type: 'asset',
+        name: 'graph.wasm.json',
+        source,
+      });
+      return `export default import.meta.ROLLUP_FILE_URL_${emittedRefId};`;
+    },
+    resolveFileUrl({ referenceId, fileName }) {
+      if (referenceId === emittedRefId) {
+        return JSON.stringify(`${base}${fileName}`);
+      }
+      return undefined;
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), hashedGraphWasmPlugin()],
   optimizeDeps: {
     exclude: ['@relate/relate-wasm'],
   },

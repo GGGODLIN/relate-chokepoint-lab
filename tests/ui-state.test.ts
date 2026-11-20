@@ -210,16 +210,56 @@ describe('map layers', () => {
     expect(heroRouteCollection(null).features).toEqual([]);
   });
 
-  it('Tier 2 overlays the golden routes except the one already drawn as hero', () => {
+  it('Tier 2 keeps unaffected non-hero golden routes at pressure 0 and skips an unchanged hero', () => {
     const evaluation = evaluationWith({
-      golden: catalog.goldenRoutes.slice(0, 2).map((g, i) => ({
+      golden: catalog.goldenRoutes.slice(0, 3).map((g, i) => ({
         route: g,
-        current: route(g.from, g.to, 100 + i, 10, [[[0, 0], [1, 1]]]),
+        current: route(g.from, g.to, i === 1 ? 105 : 100, 10, [[[i, 0], [i + 1, 1]]]),
         baseline: route(g.from, g.to, 100, 10),
       })),
     });
     const golden = goldenRouteCollection(evaluation);
-    expect(golden.features.map((f) => f.properties)).toEqual([{ id: 'sgsin-nlrtm', status: 'rerouted' }]);
+    expect(golden.features.map((f) => f.properties)).toEqual([
+      { id: catalog.goldenRoutes[2]!.id, status: 'unchanged', pressure: 0 },
+      { status: 'rerouted', pressure: 1 },
+    ]);
+  });
+
+  it('Tier 2 aggregates shared rerouted segments across golden routes into corridor pressure >= 2', () => {
+    const capeA: [number, number] = [20.0, -35.0];
+    const capeB: [number, number] = [18.4, -34.4];
+    const evaluation = evaluationWith({
+      golden: [
+        {
+          route: catalog.goldenRoutes[0]!,
+          current: route('TWKHH', 'NLRTM', 25943.2, 133, [[[120.3, 22.6], capeA, capeB, [4.4, 51.9]]]),
+          baseline: route('TWKHH', 'NLRTM', 19882.1, 126),
+        },
+        {
+          route: catalog.goldenRoutes[1]!,
+          current: route('SGSIN', 'NLRTM', 23143.9, 119, [[[103.8, 1.3], capeA, capeB, [4.4, 51.9]]]),
+          baseline: route('SGSIN', 'NLRTM', 16241.3, 111),
+        },
+        {
+          route: catalog.goldenRoutes[2]!,
+          // Reversed traversal (capeB -> capeA) must normalize to the same undirected segment.
+          current: route('AEJEA', 'ITGOA', 20814.4, 104, [[[55.0, 25.0], capeB, capeA, [8.9, 44.4]]]),
+          baseline: route('AEJEA', 'ITGOA', 8314.8, 63),
+        },
+      ],
+    });
+    const golden = goldenRouteCollection(evaluation);
+    const pressure3 = golden.features.filter((f) => f.properties?.pressure === 3);
+    const pressure2 = golden.features.filter((f) => f.properties?.pressure === 2);
+    const pressure1 = golden.features.filter((f) => f.properties?.pressure === 1);
+
+    expect(pressure3).toHaveLength(1);
+    expect(pressure3[0]?.geometry.coordinates).toEqual([[capeB, capeA]]);
+    expect(pressure2).toHaveLength(1);
+    expect(pressure2[0]?.geometry.coordinates).toEqual([[capeB, [4.4, 51.9]]]);
+    expect(pressure1).toHaveLength(1);
+    expect(pressure1[0]?.geometry.coordinates).toHaveLength(4);
+    expect(golden.features.map((f) => f.properties?.pressure)).toEqual([1, 2, 3]);
   });
 
   it('splits antimeridian boxes into two polygons and fits Pacific routes without spanning the globe', () => {

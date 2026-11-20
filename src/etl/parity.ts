@@ -49,12 +49,6 @@ export interface ParitySnapshot {
   readonly hormuzTopCountries: readonly TradeExposureRow[];
 }
 
-export interface ParityQuerySpec {
-  readonly label: string;
-  readonly cypher: string;
-  readonly params: Readonly<Record<string, unknown>> | null;
-}
-
 export type QueryRunner = (
   cypher: string,
   params: Readonly<Record<string, unknown>> | null,

@@ -132,19 +132,14 @@ export interface TradeExposureEvaluationResult {
 
 export interface ScenarioEvaluationRequest {
   readonly blockedPassageIds: readonly string[];
-  readonly customBoxes?: readonly CustomBBoxInput[];
-  readonly customBoxEdgeLimit?: number;
   readonly routeFrom?: string;
   readonly routeTo?: string;
-  readonly includeIsolation?: boolean;
-  readonly includeTradeExposure?: boolean;
   readonly profile?: boolean;
 }
 
 export interface ScenarioEvaluationResult {
   readonly blockedPassageIds: readonly string[];
   readonly openRelTypes: readonly string[];
-  readonly customBoxResult: CustomBBoxApplyResult | null;
   readonly route: RouteEvaluationResult | null;
   readonly isolation: IsolationEvaluationResult | null;
   readonly tradeExposure: TradeExposureEvaluationResult | null;
@@ -640,13 +635,6 @@ export class ChokepointEngine {
     const blockedPassageIds = [...new Set(request.blockedPassageIds)];
     const openRelTypes = getOpenRelTypes(this.catalog, blockedPassageIds);
 
-    const customBoxResult =
-      request.customBoxes !== undefined
-        ? this.applyCustomBoxes(request.customBoxes, {
-            limit: request.customBoxEdgeLimit,
-          })
-        : null;
-
     const route =
       request.routeFrom !== undefined && request.routeTo !== undefined
         ? this.queryRoute(request.routeFrom, request.routeTo, blockedPassageIds, {
@@ -654,85 +642,78 @@ export class ChokepointEngine {
           })
         : null;
 
-    let isolation: IsolationEvaluationResult | null = null;
-    let tradeExposure: TradeExposureEvaluationResult | null = null;
+    const referenceHubCode = this.catalog.referenceHubCode;
+    const isoCypher = QueryBuilder.buildIsolationQuery(this.catalog, blockedPassageIds, {
+      profile: request.profile,
+    });
+    const isoParams = { refHub: referenceHubCode };
+    const isoEnv = this.executeChecked(isoCypher, isoParams);
+    const isoTelemetry = extractTelemetry(isoEnv);
 
-    if (request.includeIsolation ?? true) {
-      const referenceHubCode = this.catalog.referenceHubCode;
-      const isoCypher = QueryBuilder.buildIsolationQuery(this.catalog, blockedPassageIds, {
-        profile: request.profile,
-      });
-      const isoParams = { refHub: referenceHubCode };
-      const isoEnv = this.executeChecked(isoCypher, isoParams);
-      const isoTelemetry = extractTelemetry(isoEnv);
+    const isolatedPorts: IsolatedPortRecord[] = isoEnv.rows.map((row) => ({
+      code: requireString(row, 'code', isoCypher, isoParams, isoTelemetry),
+      name: requireString(row, 'name', isoCypher, isoParams, isoTelemetry),
+      country: requireString(row, 'country', isoCypher, isoParams, isoTelemetry),
+      lon: requireFiniteNumber(row, 'lon', isoCypher, isoParams, isoTelemetry),
+      lat: requireFiniteNumber(row, 'lat', isoCypher, isoParams, isoTelemetry),
+      rank: requireFiniteNumber(row, 'rank', isoCypher, isoParams, isoTelemetry),
+      tradeDegree: requireFiniteNumber(row, 'tradeDegree', isoCypher, isoParams, isoTelemetry),
+    }));
 
-      const isolatedPorts: IsolatedPortRecord[] = isoEnv.rows.map((row) => ({
-        code: requireString(row, 'code', isoCypher, isoParams, isoTelemetry),
-        name: requireString(row, 'name', isoCypher, isoParams, isoTelemetry),
-        country: requireString(row, 'country', isoCypher, isoParams, isoTelemetry),
-        lon: requireFiniteNumber(row, 'lon', isoCypher, isoParams, isoTelemetry),
-        lat: requireFiniteNumber(row, 'lat', isoCypher, isoParams, isoTelemetry),
-        rank: requireFiniteNumber(row, 'rank', isoCypher, isoParams, isoTelemetry),
-        tradeDegree: requireFiniteNumber(row, 'tradeDegree', isoCypher, isoParams, isoTelemetry),
-      }));
+    const totalPorts = this.portsByCode.size;
+    const isolatedCount = isolatedPorts.length;
+    const isolation: IsolationEvaluationResult = {
+      referenceHubCode,
+      totalPorts,
+      reachablePorts: Math.max(0, totalPorts - isolatedCount),
+      isolatedCount,
+      isolatedPorts,
+      cypher: isoCypher,
+      params: isoParams,
+      telemetry: isoTelemetry,
+    };
 
-      const totalPorts = this.portsByCode.size;
-      const isolatedCount = isolatedPorts.length;
-      isolation = {
-        referenceHubCode,
-        totalPorts,
-        reachablePorts: Math.max(0, totalPorts - isolatedCount),
-        isolatedCount,
-        isolatedPorts,
-        cypher: isoCypher,
-        params: isoParams,
-        telemetry: isoTelemetry,
+    const tradeCypher = QueryBuilder.buildTradeExposureForPortsQuery({
+      profile: request.profile,
+    });
+
+    let tradeExposure: TradeExposureEvaluationResult;
+    if (isolatedCount === 0) {
+      tradeExposure = {
+        countries: [],
+        cypher: tradeCypher,
+        params: { isolatedCodes: [] },
+        telemetry: null,
       };
-
-      if (request.includeTradeExposure ?? true) {
-        const tradeCypher = QueryBuilder.buildTradeExposureForPortsQuery({
-          profile: request.profile,
-        });
-
-        if (isolatedCount === 0) {
-          tradeExposure = {
-            countries: [],
-            cypher: tradeCypher,
-            params: { isolatedCodes: [] },
-            telemetry: null,
-          };
-        } else {
-          // Reuse isolated port codes from the 1-to-ALL pass so we avoid running BFS twice.
-          const tradeParams = {
-            isolatedCodes: isolatedPorts.map((p) => p.code),
-          };
-          const tradeEnv = this.executeChecked(tradeCypher, tradeParams);
-          const tradeTelemetry = extractTelemetry(tradeEnv);
-          const countries: TradeExposureRecord[] = tradeEnv.rows.map((row) => ({
-            countryCode: requireString(row, 'countryCode', tradeCypher, tradeParams, tradeTelemetry),
-            countryName: requireString(row, 'countryName', tradeCypher, tradeParams, tradeTelemetry),
-            exposedPorts: requireFiniteNumber(
-              row,
-              'exposedPorts',
-              tradeCypher,
-              tradeParams,
-              tradeTelemetry,
-            ),
-          }));
-          tradeExposure = {
-            countries,
-            cypher: tradeCypher,
-            params: tradeParams,
-            telemetry: tradeTelemetry,
-          };
-        }
-      }
+    } else {
+      // Reuse isolated port codes from the 1-to-ALL pass so we avoid running BFS twice.
+      const tradeParams = {
+        isolatedCodes: isolatedPorts.map((p) => p.code),
+      };
+      const tradeEnv = this.executeChecked(tradeCypher, tradeParams);
+      const tradeTelemetry = extractTelemetry(tradeEnv);
+      const countries: TradeExposureRecord[] = tradeEnv.rows.map((row) => ({
+        countryCode: requireString(row, 'countryCode', tradeCypher, tradeParams, tradeTelemetry),
+        countryName: requireString(row, 'countryName', tradeCypher, tradeParams, tradeTelemetry),
+        exposedPorts: requireFiniteNumber(
+          row,
+          'exposedPorts',
+          tradeCypher,
+          tradeParams,
+          tradeTelemetry,
+        ),
+      }));
+      tradeExposure = {
+        countries,
+        cypher: tradeCypher,
+        params: tradeParams,
+        telemetry: tradeTelemetry,
+      };
     }
 
     return {
       blockedPassageIds,
       openRelTypes,
-      customBoxResult,
       route,
       isolation,
       tradeExposure,

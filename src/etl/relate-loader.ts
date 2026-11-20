@@ -61,16 +61,6 @@ export function buildShortestRouteCypher(openRelTypes: readonly string[]): strin
   ].join('\n');
 }
 
-export function buildReachablePortsCypher(openRelTypes: readonly string[]): string {
-  const relPattern = buildStaticRelTypeDisjunction(openRelTypes);
-  return [
-    'MATCH (hub:Port {code: $refHub})',
-    `MATCH p = shortestPath((hub)-[${relPattern}*]-(p2:Port))`,
-    'WHERE p2 <> hub',
-    'RETURN count(p2) AS reachableOtherPorts',
-  ].join('\n');
-}
-
 export function buildIsolatedPortsCypher(openRelTypes: readonly string[]): string {
   const relPattern = buildStaticRelTypeDisjunction(openRelTypes);
   return [

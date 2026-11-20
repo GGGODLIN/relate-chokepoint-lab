@@ -8,26 +8,29 @@ import {
 } from '../src/contracts/catalog.ts';
 import type { WasmGraphPayload } from '../src/etl/build-graph.ts';
 import {
-  ChokepointEngine,
-  ChokepointWorkerClient,
   DEFAULT_MAX_LON_SPAN_DEG,
   normalizeDragBBox,
-  QueryBuilder,
+  type DragBBoxResult,
+  type ScreenPoint,
+  type ScreenUnprojector,
+} from '../src/engine/bbox.ts';
+import {
+  ChokepointEngine,
   RelateQueryError,
+  type BootTelemetry,
+} from '../src/engine/chokepoint-engine.ts';
+import { QueryBuilder } from '../src/engine/query-builder.ts';
+import {
+  ChokepointWorkerClient,
   StaleRequestError,
   WasmTrapError,
   WorkerDisposedError,
   WorkerTimeoutError,
-  type BootTelemetry,
-  type DragBBoxResult,
-  type ScreenPoint,
-  type ScreenUnprojector,
   type WorkerErrorEventLike,
   type WorkerLike,
   type WorkerMessageEventLike,
-  type WorkerRequest,
-  type WorkerResponse,
-} from '../src/engine/index.ts';
+} from '../src/engine/worker-client.ts';
+import type { WorkerRequest, WorkerResponse } from '../src/engine/worker-protocol.ts';
 import { initRelateWasmNode } from '../src/engine/probe.ts';
 
 const ROOT_DIR = resolve(import.meta.dirname, '..');
@@ -831,7 +834,6 @@ describe('Seam 2 — ChokepointWorkerClient transport & recovery resilience', ()
             data: {
               blockedPassageIds: msg.request.blockedPassageIds,
               openRelTypes: ['SEA_OPEN'],
-              customBoxResult: null,
               route: null,
               isolation: null,
               tradeExposure: null,

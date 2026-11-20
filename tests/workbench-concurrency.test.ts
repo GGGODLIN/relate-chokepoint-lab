@@ -265,7 +265,6 @@ class FakeWorker implements WorkbenchClient {
       return {
         blockedPassageIds: blocked,
         openRelTypes: [],
-        customBoxResult: null,
         route: this.route(request.routeFrom ?? '', request.routeTo ?? '', blocked),
         isolation: {
           referenceHubCode: catalog.referenceHubCode,
@@ -756,7 +755,6 @@ describe('workbench controller under random interleavings (fake worker boundary)
               data: {
                 blockedPassageIds: blocked,
                 openRelTypes: [],
-                customBoxResult: null,
                 route: {
                   fromCode: msg.request.routeFrom ?? '',
                   toCode: msg.request.routeTo ?? '',

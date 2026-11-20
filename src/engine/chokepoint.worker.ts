@@ -69,18 +69,8 @@ async function handleRequest(msg: WorkerRequest): Promise<unknown> {
         profile: msg.profile,
       });
     }
-    case 'getMetadata': {
-      return getOrCreateEngine().getMetadata();
-    }
     case 'getPorts': {
       return getOrCreateEngine().getPorts();
-    }
-    case 'dispose': {
-      if (engine !== null) {
-        engine.dispose();
-        engine = null;
-      }
-      return { disposed: true };
     }
   }
 }

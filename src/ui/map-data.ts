@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, MultiLineString, Point, Polygon } from 'geojson';
-import type { IsolatedPortRecord, PortRecord } from '../engine/chokepoint-engine.ts';
+import type { IsolatedPortRecord } from '../engine/chokepoint-engine.ts';
 import {
   compareRoutes,
   odKey,
@@ -7,7 +7,6 @@ import {
   type Evaluation,
   type LonLatTuple,
   type RouteStatus,
-  type RouteSummary,
 } from './model.ts';
 
 export type LineCollection = FeatureCollection<MultiLineString>;
@@ -57,24 +56,94 @@ export function heroRouteCollection(evaluation: Evaluation | null): LineCollecti
   return { type: 'FeatureCollection', features };
 }
 
-/** Tier 2: the golden routes under the current scenario, minus whichever one is the hero. */
+function canonicalSegment(
+  a: LonLatTuple,
+  b: LonLatTuple,
+): { readonly key: string; readonly coords: [number, number][] } {
+  const ka = `${a[0]},${a[1]}`;
+  const kb = `${b[0]},${b[1]}`;
+  return ka <= kb
+    ? { key: `${ka}|${kb}`, coords: [[a[0], a[1]], [b[0], b[1]]] }
+    : { key: `${kb}|${ka}`, coords: [[b[0], b[1]], [a[0], a[1]]] };
+}
+
+/**
+ * Tier 2: corridor pressure heatmap for affected (rerouted) golden routes, plus subtle
+ * background lines for unaffected non-hero golden routes.
+ */
 export function goldenRouteCollection(evaluation: Evaluation | null): LineCollection {
   if (evaluation === null) {
     return EMPTY_LINES;
   }
   const heroKey = odKey(evaluation.scenario.hero);
-  const features: Feature<MultiLineString>[] = [];
+  const unchangedFeatures: Feature<MultiLineString>[] = [];
+  const segmentCounts = new Map<string, { readonly coords: [number, number][]; count: number }>();
+
   for (const golden of evaluation.golden) {
+    const status: RouteStatus = compareRoutes(golden.baseline, golden.current).status;
+    if (status === 'rerouted') {
+      const seenInRoute = new Set<string>();
+      for (const polyline of golden.current.segments) {
+        for (let i = 0; i < polyline.length - 1; i++) {
+          const a = polyline[i];
+          const b = polyline[i + 1];
+          if (a === undefined || b === undefined || (a[0] === b[0] && a[1] === b[1])) {
+            continue;
+          }
+          const seg = canonicalSegment(a, b);
+          if (seenInRoute.has(seg.key)) {
+            continue;
+          }
+          seenInRoute.add(seg.key);
+          const existing = segmentCounts.get(seg.key);
+          if (existing !== undefined) {
+            existing.count++;
+          } else {
+            segmentCounts.set(seg.key, { coords: seg.coords, count: 1 });
+          }
+        }
+      }
+      continue;
+    }
+
     if (odKey({ from: golden.route.from, to: golden.route.to }) === heroKey) {
       continue;
     }
-    const status: RouteStatus = compareRoutes(golden.baseline, golden.current).status;
-    const feature = toMultiLine(golden.current.segments, { id: golden.route.id, status });
+    const feature = toMultiLine(golden.current.segments, {
+      id: golden.route.id,
+      status: 'unchanged',
+      pressure: 0,
+    });
     if (feature !== null) {
-      features.push(feature);
+      unchangedFeatures.push(feature);
     }
   }
-  return { type: 'FeatureCollection', features };
+
+  const byPressure = new Map<number, [number, number][][]>();
+  for (const { coords, count } of segmentCounts.values()) {
+    const bucket = byPressure.get(count);
+    if (bucket !== undefined) {
+      bucket.push(coords);
+    } else {
+      byPressure.set(count, [coords]);
+    }
+  }
+
+  // Emit ascending pressure levels so higher-pressure corridors draw above lower-pressure ones.
+  const pressureLevels = [...byPressure.keys()].sort((a, b) => a - b);
+  const pressureFeatures: Feature<MultiLineString>[] = pressureLevels.map((pressure) => ({
+    type: 'Feature',
+    properties: { status: 'rerouted', pressure },
+    geometry: {
+      type: 'MultiLineString',
+      coordinates: byPressure.get(pressure) ?? [],
+    },
+  }));
+
+  return {
+    type: 'FeatureCollection',
+    features: [...unchangedFeatures, ...pressureFeatures],
+  };
 }
 
 export function isolatedPortCollection(ports: readonly IsolatedPortRecord[]): PointCollection {
@@ -86,30 +155,6 @@ export function isolatedPortCollection(ports: readonly IsolatedPortRecord[]): Po
       geometry: { type: 'Point', coordinates: [port.lon, port.lat] },
     })),
   };
-}
-
-export function endpointCollection(
-  route: RouteSummary | null,
-  portsByCode: ReadonlyMap<string, PortRecord>,
-): PointCollection {
-  if (route === null) {
-    return EMPTY_POINTS;
-  }
-  const features: Feature<Point>[] = [];
-  for (const [role, code] of [
-    ['from', route.from],
-    ['to', route.to],
-  ] as const) {
-    const port = portsByCode.get(code);
-    if (port !== undefined) {
-      features.push({
-        type: 'Feature',
-        properties: { role, code: port.code, name: port.name },
-        geometry: { type: 'Point', coordinates: [port.lon, port.lat] },
-      });
-    }
-  }
-  return { type: 'FeatureCollection', features };
 }
 
 export function boxCollection(

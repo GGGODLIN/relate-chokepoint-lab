@@ -40,15 +40,7 @@ export type WorkerRequest =
       readonly profile?: boolean;
     }
   | {
-      readonly type: 'getMetadata';
-      readonly id: number;
-    }
-  | {
       readonly type: 'getPorts';
-      readonly id: number;
-    }
-  | {
-      readonly type: 'dispose';
       readonly id: number;
     };
 

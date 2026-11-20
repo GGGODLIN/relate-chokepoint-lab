@@ -130,9 +130,45 @@ function buildStyle(): StyleSpecification {
         source: 'golden',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': ['match', ['get', 'status'], 'rerouted', '#f97316', 'isolated', '#ef4444', '#38bdf8'],
-          'line-opacity': ['match', ['get', 'status'], 'rerouted', 0.6, 0.38],
-          'line-width': 1.5,
+          'line-color': [
+            'interpolate',
+            ['linear'],
+            ['coalesce', ['get', 'pressure'], 0],
+            0,
+            '#38bdf8',
+            1,
+            '#f59e0b',
+            2,
+            '#f97316',
+            3,
+            '#ef4444',
+          ],
+          'line-opacity': [
+            'interpolate',
+            ['linear'],
+            ['coalesce', ['get', 'pressure'], 0],
+            0,
+            0.18,
+            1,
+            0.42,
+            2,
+            0.65,
+            3,
+            0.85,
+          ],
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['coalesce', ['get', 'pressure'], 0],
+            0,
+            1.2,
+            1,
+            2.0,
+            2,
+            3.6,
+            3,
+            5.2,
+          ],
         },
       },
       {
@@ -602,8 +638,12 @@ function Legend() {
           detour under scenario
         </li>
         <li className="flex items-center gap-2">
-          <svg width="26" height="6" aria-hidden="true"><line x1="0" y1="3" x2="26" y2="3" stroke="#38bdf8" strokeOpacity="0.5" strokeWidth="1.5" /></svg>
-          other golden routes
+          <svg width="26" height="6" aria-hidden="true">
+            <line x1="0" y1="3" x2="9" y2="3" stroke="#f59e0b" strokeOpacity="0.65" strokeWidth="2" />
+            <line x1="9" y1="3" x2="18" y2="3" stroke="#f97316" strokeOpacity="0.8" strokeWidth="3" />
+            <line x1="18" y1="3" x2="26" y2="3" stroke="#ef4444" strokeOpacity="0.95" strokeWidth="4" />
+          </svg>
+          corridor pressure (affected routes)
         </li>
         <li className="flex items-center gap-2">
           <svg width="26" height="10" aria-hidden="true"><circle cx="13" cy="5" r="3.5" fill="#ef4444" /></svg>
